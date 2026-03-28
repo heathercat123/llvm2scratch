@@ -25,11 +25,14 @@ An LLVM backend to convert LLVM IR to [MIT Scratch](https://scratch.mit.edu), a 
 ## Installation
 
 * Install llvm2scratch with `pip install ` followed by the path to the project root (the folder containing the pyproject.toml and llvm2scratch folder)
+* Make sure to use clang 19 when compiling
 
 ## Usage
 ```
 llvm2scratch [-h] [-o OUTPUT] [--opti OPTI] input
 ```
+
+Where input is a .ll file for LLVM 19
 
 ## Info
 

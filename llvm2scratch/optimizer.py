@@ -393,6 +393,8 @@ def getValueVarUse(value: sb3.Value) -> tuple[set[str], Counter[str]]:
       result = {name}, Counter({name: 1})
     case sb3.GetCounter():
       return {"counter:"}, Counter()
+    case sb3.GetAnswer():
+      return {"answer:"}, Counter()
     case sb3.Op() | sb3.BoolOp():
       depends, counts = getValueVarUse(value.left)
       if value.right is not None:
@@ -450,6 +452,10 @@ def getBlockListVarUse(blocklist: sb3.BlockList, func_info: dict[str, BlockListI
         name = "counter:"
         if block.op == "incr":
           info.dependent.add(name)
+        info.might_modify.add(name)
+        info.always_modify.add(name)
+      case sb3.Ask():
+        name = "answer:"
         info.might_modify.add(name)
         info.always_modify.add(name)
       case sb3.ProcedureCall() | sb3.Broadcast():
@@ -551,7 +557,7 @@ def shouldElide(value: sb3.Value, times_used: float) -> bool:
 
 def assignmentElisionValue(value: sb3.Value, to_elide: dict[str, sb3.Value]) -> tuple[sb3.Value, bool]:
   match value:
-    case sb3.Known() | sb3.GetParameter() | sb3.GetCounter():
+    case sb3.Known() | sb3.GetParameter() | sb3.GetCounter() | sb3.GetAnswer():
       result = value
       did_opti = False
     case sb3.GetVar():

@@ -2547,11 +2547,31 @@ def addForeignFunctions(ctx: Context) -> Context:
 
   # Converts a Scratch string to a C string.
   # Not meant to be used in C as it doesn't support Scratch strings.
-  ctx = addFunc("!helper_scratch2str", ["input", "str"], sb3.BlockList([
+  ctx = addFunc("!helper_scratch2str", ["input", "str", "count"], sb3.BlockList([
     sb3.EditVar("set", ctx.cfg.return_var, sb3.Known("")),
     sb3.EditVar("set", "ptr", sb3.GetParameter(localizeParameter("str"))),
     sb3.EditVar("set", "i", sb3.Known(1)),
-    sb3.ControlFlow("reptimes", sb3.Op("length_of", sb3.GetParameter(localizeParameter("input"))), sb3.BlockList([
+
+    # Default: full string.
+
+    sb3.ControlFlow("if_else", sb3.BoolOp("<", sb3.Op("length_of", sb3.GetParameter(localizeParameter("input"))), sb3.GetParameter(localizeParameter("count"))), sb3.BlockList([
+      # The limit is high enough.
+      sb3.EditVar("set", ctx.cfg.return_var, sb3.Known(1)),
+      # Re-using the "char" variable for counting how many letters should be copied.
+      # I think it makes sense, right?
+      # Also, according to @Classified3D and the README, calculating the length twice is the fastest option.
+      sb3.EditVar("set", "char", sb3.Op("length_of", sb3.GetParameter(localizeParameter("input")))),
+    ]),
+    # Else
+    sb3.BlockList([
+      # The limit is lower than the inputted string.
+      # Return False and reduce the letter count.
+      # Doing -1 to account for the NULL at the end.
+      sb3.EditVar("set", "char", sb3.Op("sub", sb3.GetParameter(localizeParameter("count")), sb3.Known(1))),
+      sb3.EditVar("set", ctx.cfg.return_var, sb3.Known(0))
+    ])),
+
+    sb3.ControlFlow("reptimes", sb3.GetVar("char"), sb3.BlockList([
       # TODO: Case sensitivity (using costumes).
       # This would also help for Scratch 2.0 support.
       #   (although that's more than probably not planned, but I personally just really like Scratch 2.)
@@ -2564,6 +2584,8 @@ def addForeignFunctions(ctx: Context) -> Context:
     ])),
     # End of string
     sb3.EditList("replaceat", ctx.cfg.stack_var, sb3.GetVar("ptr"), sb3.Known(0)),
+
+    # Return value is set above.
   ]), ctx)
 
   ctx = addFunc("SB3_say_str", ["input"], sb3.BlockList([
@@ -2585,12 +2607,31 @@ def addForeignFunctions(ctx: Context) -> Context:
 
   # output (str): The answer the user provided.
   # input  (str): The question to display in the text bubble.
-  ctx = addFunc("SB3_ask_str", ["output", "input"], sb3.BlockList([
+  # count  (int): The maximum length of the string.
+  ctx = addFunc("SB3_ask_str", ["output", "input", "count"], sb3.BlockList([
     sb3.ProcedureCall("!helper_str2scratch", [sb3.GetParameter(localizeParameter("input"))]),
     sb3.Ask(sb3.GetVar(ctx.cfg.return_var)),
 
-    sb3.ProcedureCall("!helper_scratch2str", [sb3.GetAnswer(), sb3.GetParameter(localizeParameter("output"))]),
-    sb3.EditVar("set", ctx.cfg.return_var, sb3.Known(1)),
+    sb3.ProcedureCall("!helper_scratch2str", [
+      sb3.GetAnswer(),
+      sb3.GetParameter(localizeParameter("output")),
+      sb3.GetParameter(localizeParameter("count"))
+    ]),
+    # Return value is set by scratch2str.
+  ]), ctx)
+
+  # output (str): The answer the user provided.
+  # input  (str): The question to display in the text bubble.
+  ctx = addFunc("SB3_ask_str_unsafe", ["output", "input"], sb3.BlockList([
+    sb3.ProcedureCall("!helper_str2scratch", [sb3.GetParameter(localizeParameter("input"))]),
+    sb3.Ask(sb3.GetVar(ctx.cfg.return_var)),
+
+    sb3.ProcedureCall("!helper_scratch2str", [
+      sb3.GetAnswer(),
+      sb3.GetParameter(localizeParameter("output")),
+      sb3.Known("Infinity"),
+    ]),
+    # Return value is set by scratch2str. It's always going to be 1.
   ]), ctx)
 
   # Same as SB3_ask_str, but it outputs a double.

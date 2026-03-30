@@ -297,7 +297,7 @@ class ShuffleVector(Instr, HasResult):
 @dataclass
 class ExtractValue(Instr, HasResult):
   agg: Value
-  indicies: list[Value]
+  indices: list[Value]
 
 @dataclass
 class InsertValue(Instr):

@@ -15,7 +15,7 @@ def main():
     EditVar("set", "hello3", GetCounter()),
     EditCounter("incr"),
     EditVar("set", "hello4", Op("add", GetVar("hello3"), Known(20))),
-    Say(GetVar("hello4")), # Test if will elide if used too many times for it be faster
+    Say(GetVar("hello4")), # Test if will elide if used too many times for it be faster
     Say(GetVar("hello4")),
     Say(GetVar("hello4")),
     Say(GetVar("hello4")),

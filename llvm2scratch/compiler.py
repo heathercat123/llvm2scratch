@@ -1821,8 +1821,7 @@ def getInstrVarUse(instr: ir.Instr,
     case ir.Store():
       vals = [instr.address, instr.value]
     case ir.Call():
-      vals = [instr.func]
-      vals.extend([a for a in instr.args])
+      vals = [instr.func, *instr.args]
     case ir.UnaryOp():
       vals = [instr.operand]
     case ir.BinaryOp() | ir.ICmp() | ir.FCmp():
@@ -1835,8 +1834,11 @@ def getInstrVarUse(instr: ir.Instr,
     case ir.Select():
       vals = [instr.cond, instr.true_value, instr.false_value]
     case ir.GetElementPtr():
-      vals = [instr.base_ptr]
-      vals.extend([i for i in instr.indices])
+      vals = [instr.base_ptr, *instr.indices]
+    case ir.ExtractValue():
+      vals = [instr.agg, *instr.indices]
+    case ir.InsertValue():
+      vals = [instr.agg, instr.element, *instr.indices]
     case _:
       raise CompException(f"Unknown instruction {instr} (type {type(instr)})")
 
@@ -2468,7 +2470,7 @@ def transGlobals(mod: ir.Module, ctx: Context) -> tuple[sb3.BlockList, Context]:
 
       if unknown: raise CompException(f"Expected static value {glob} to have a compile time known value")
 
-      values = []
+      values: list[sb3.Value] = []
       match value:
         case sb3.Known():
           size = total_size

@@ -1674,7 +1674,7 @@ def transInstr(instr: ir.Instr, ctx: Context, bctx: BlockInfo) -> tuple[sb3.Bloc
 
       if not all(isinstance(val.type, ir.IntegerTy) for val in \
           (instr.cond, instr.true_value, instr.false_value)): # TODO: add vector support
-        raise CompException(f"Instruction {instr} with opcode add only supports "
+        raise CompException(f"Instruction {instr} with opcode select only supports "
                             f"integers, got other type")
       assert isinstance(instr.cond.type, ir.IntegerTy)
       assert instr.cond.type.width == 1
@@ -2019,7 +2019,7 @@ def transTerminatorInstr(instr: ir.Instr,
 
       cond = transValue(instr.cond, ctx, bctx)
       if isinstance(cond.value, IdxbleValue):
-        raise CompException(f"Indexable value not supported for brach condition {instr}")
+        raise CompException(f"Indexable value not supported for branch condition {instr}")
       blocks.add(cond.blocks)
 
       label_true, label_false = instr.branch_true.label, instr.branch_false.label

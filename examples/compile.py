@@ -6,6 +6,9 @@ def main():
   script_dir = os.path.dirname(os.path.abspath(__file__))
   os.chdir(script_dir)
 
+  if not os.path.exists("./output"):
+    os.mkdir("output")
+
   # --target=i386-none-elf will remove standard lib, preferable when adding own
   subprocess.run(["clang", "-S", "-m32", "-Os", "-fno-vectorize", "-fno-slp-vectorize", "-emit-llvm", "-I", "sb3api.h", "demo.c", "-o", "main.ll"],
                  cwd=os.path.join(script_dir, "input"))

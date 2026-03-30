@@ -892,8 +892,8 @@ def exportSpriteData(ctx: ScratchContext) -> str:
 
   return json.dumps(res)
 
-def exportScratchFile(ctx: ScratchContext, file: str) -> None:
+def exportScratchFile(ctx: ScratchContext, path: str) -> None:
   """Exports scratch code to a .sprite3 file"""
-  with zipfile.ZipFile(file, "w") as zipf:
+  with zipfile.ZipFile(path, "w") as zipf:
     zipf.writestr("Sprite/sprite.json", exportSpriteData(ctx))
     zipf.writestr(f"Sprite/{EMPTY_SVG_HASH}.svg", EMPTY_SVG)

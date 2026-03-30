@@ -504,60 +504,6 @@ class GetAnswer(Value):
 
     return [3, id, [10, ""]], ctx
 
-# Variables
-@dataclass
-class GetVar(Value):
-  var_name: str
-
-  def getRawValue(self, parent: Id, ctx: ScratchContext, cast: ScratchCast) -> tuple[list, ScratchContext]:
-    id = ctx.addOrGetVar(self.var_name)
-    return [3, [12, self.var_name, id], [10, ""]], ctx
-
-@dataclass
-class EditVar(Block):
-  op: Literal["set", "change"]
-  var_name: str
-  value: Value
-
-  def getRaw(self, my_id: Id, ctx: ScratchContext) -> tuple[dict, ScratchContext]:
-    id = ctx.addOrGetVar(self.var_name)
-    # NOTE: technically set variable doesn't cast but we need to assume the worst scenario
-    raw_val, ctx = self.value.getRawValue(my_id, ctx, (ScratchCast.TO_STR if self.op == "set" else ScratchCast.TO_INT))
-    return {
-      "opcode": SHORT_OP_TO_OPCODE[self.op],
-      "inputs": {"VALUE": raw_val},
-      "fields": {"VARIABLE": [self.var_name, id]}
-    }, ctx
-
-@dataclass
-class EditList(Block):
-  op: Literal["addto", "replaceat", "insertat", "deleteat", "deleteall"]
-  list_name: str
-  index: Value | None
-  item: Value | None
-
-  def getRaw(self, my_id: Id, ctx: ScratchContext) -> tuple[dict, ScratchContext]:
-    list_id = ctx.addOrGetList(self.list_name)
-    inputs = {}
-
-    if self.index is not None:
-      if self.op in ["addto", "deleteall"]:
-        raise ScratchCompException(f"{self.op} does not support an index value")
-      raw_index, ctx = self.index.getRawValue(my_id, ctx, ScratchCast.TO_INT)
-      inputs.update({"INDEX": raw_index})
-
-    if self.item is not None:
-      raw_item, ctx = self.item.getRawValue(my_id, ctx, ScratchCast.TO_STR)
-      if self.op in ["deleteat", "deleteall"]:
-        raise ScratchCompException(f"{self.op} does not support an item")
-      inputs.update({"ITEM": raw_item})
-
-    return {
-      "opcode": SHORT_OP_TO_OPCODE[self.op],
-      "inputs": inputs,
-      "fields": {"LIST": [self.list_name, list_id]},
-    }, ctx
-
 @dataclass
 class GetOfList(Value):
   op: Literal["atindex", "indexof"]
@@ -708,6 +654,60 @@ class BoolOp(BooleanValue):
 
   def getRawBoolValue(self, parent: str, ctx: ScratchContext) -> tuple[list | None, ScratchContext]:
     return self.getRawValue(parent, ctx, ScratchCast.TO_INT)
+
+# Variables
+@dataclass
+class GetVar(Value):
+  var_name: str
+
+  def getRawValue(self, parent: Id, ctx: ScratchContext, cast: ScratchCast) -> tuple[list, ScratchContext]:
+    id = ctx.addOrGetVar(self.var_name)
+    return [3, [12, self.var_name, id], [10, ""]], ctx
+
+@dataclass
+class EditVar(Block):
+  op: Literal["set", "change"]
+  var_name: str
+  value: Value
+
+  def getRaw(self, my_id: Id, ctx: ScratchContext) -> tuple[dict, ScratchContext]:
+    id = ctx.addOrGetVar(self.var_name)
+    # NOTE: technically set variable doesn't cast but we need to assume the worst scenario
+    raw_val, ctx = self.value.getRawValue(my_id, ctx, (ScratchCast.TO_STR if self.op == "set" else ScratchCast.TO_INT))
+    return {
+      "opcode": SHORT_OP_TO_OPCODE[self.op],
+      "inputs": {"VALUE": raw_val},
+      "fields": {"VARIABLE": [self.var_name, id]}
+    }, ctx
+
+@dataclass
+class EditList(Block):
+  op: Literal["addto", "replaceat", "insertat", "deleteat", "deleteall"]
+  list_name: str
+  index: Value | None
+  item: Value | None
+
+  def getRaw(self, my_id: Id, ctx: ScratchContext) -> tuple[dict, ScratchContext]:
+    list_id = ctx.addOrGetList(self.list_name)
+    inputs = {}
+
+    if self.index is not None:
+      if self.op in ["addto", "deleteall"]:
+        raise ScratchCompException(f"{self.op} does not support an index value")
+      raw_index, ctx = self.index.getRawValue(my_id, ctx, ScratchCast.TO_INT)
+      inputs.update({"INDEX": raw_index})
+
+    if self.item is not None:
+      raw_item, ctx = self.item.getRawValue(my_id, ctx, ScratchCast.TO_STR)
+      if self.op in ["deleteat", "deleteall"]:
+        raise ScratchCompException(f"{self.op} does not support an item")
+      inputs.update({"ITEM": raw_item})
+
+    return {
+      "opcode": SHORT_OP_TO_OPCODE[self.op],
+      "inputs": inputs,
+      "fields": {"LIST": [self.list_name, list_id]},
+    }, ctx
 
 # Procedures
 @dataclass

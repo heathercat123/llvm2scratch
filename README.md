@@ -71,7 +71,7 @@ Where input is a .ll file for LLVM 19
 ## Block Perf
 
 ```
-Time (s) per 200000 iterations:
+Time (s) per 1,000,000 iterations:
 
 Set Var:   7.550
 Get Var:   1.538
@@ -95,4 +95,6 @@ Item:      1.679
 Item #:    4.920 (Unreliable benchmark)
 
 Counter:   0.190
+
+Answer:    0.331
 ```

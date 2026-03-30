@@ -12,7 +12,7 @@ from . import scratch as sb3
 # Prevent an infinite loop of optimisations
 MAX_OPTIMIZATIONS = 50
 
-# Time (s) per 200,000 iterations
+# Time (s) per 1,000,000 iterations
 SET_VAR_COST = 7.550
 GET_VAR_COST = 1.538
 GET_PARAM_COST = 1.178
@@ -32,6 +32,7 @@ ROUND_COST = 1.250
 GET_ITEM_COST = 1.679
 ITEM_NUM_COST = 4.920 # Unreliable benchmark
 GET_COUNTER_COST = 0.190
+ANSWER_COST = 0.331
 KNOWN_COST = 0 # Included in the cost of the block that uses it
 
 class Optimization(Enum):
@@ -514,6 +515,8 @@ def getValueCost(value: sb3.Value) -> float:
   match value:
     case sb3.Known():
       cost = KNOWN_COST
+    case sb3.GetCounter():             cost = GET_COUNTER_COST
+    case sb3.GetAnswer():              cost = ANSWER_COST
     case sb3.Op():
       if value.op in ["add", "sub", "mul", "div"]: cost = MATHOP_COST
       elif value.op == "mod":          cost = MOD_COST
@@ -531,11 +534,10 @@ def getValueCost(value: sb3.Value) -> float:
       elif value.op == "contains":     cost = CONTAINS_STR_COST
       else:
         raise OptimizerException(f"Unknown BoolOp opcode, {value.op}")
-    case sb3.GetCounter():             cost = GET_COUNTER_COST
     case sb3.GetVar():                 cost = GET_VAR_COST
-    case sb3.GetParameter():           cost = GET_PARAM_COST
     case sb3.GetOfList():
       cost = GET_ITEM_COST if value.op == "atindex" else ITEM_NUM_COST
+    case sb3.GetParameter():           cost = GET_PARAM_COST
     case _:
       raise OptimizerException(f"Unknown value, {type(value)}")
 

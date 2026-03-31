@@ -2157,12 +2157,10 @@ def getFnInfo(mod: ir.Module, ctx: Context) -> Context:
   phi_assignments: defaultdict[str, defaultdict[str, defaultdict[str, list[tuple[Variable, ir.Value]]]]] = \
     defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: list())))
 
-  for fn in mod.functions.values():
-    if len(fn.blocks) == 0: # If function has no body, ignore it
-      call_graph[fn.name] = set(), False
-      total_alloca_size[fn.name] = 0
-      continue
+  defined_funcs: list[ir.Function] = list(filter(lambda fn: len(fn.blocks) > 0, mod.functions.values()))
+  defined_func_names: list[str] = [fn.name for fn in defined_funcs]
 
+  for fn in defined_funcs:
     calls: set[str] = set() # What the function calls
     for block in fn.blocks.values():
       # Find every function the function could call
@@ -2173,6 +2171,8 @@ def getFnInfo(mod: ir.Module, ctx: Context) -> Context:
             if not isinstance(instr.func, ir.FunctionVal):
               raise CompException("Function pointers not supported")
             called_name = instr.func.name
+            if called_name not in defined_func_names:
+              continue
             calls.add(called_name)
             return_addresses.setdefault(called_name, list())
             return_addresses[called_name].append(localizeCallId(call_id, block.label, fn.name))
@@ -2193,8 +2193,7 @@ def getFnInfo(mod: ir.Module, ctx: Context) -> Context:
 
     call_graph[fn.name] = calls, False
 
-  for fn in mod.functions.values():
-    if len(fn.blocks) == 0: continue
+  for fn in defined_funcs:
     block_var_use[fn.name] = getFuncBranchesVarUse(fn, phi_assignments[fn.name])
 
   for start_func in call_graph:
@@ -2216,9 +2215,7 @@ def getFnInfo(mod: ir.Module, ctx: Context) -> Context:
 
     call_graph[start_func] = visited, True
 
-  for fn in mod.functions.values():
-    if len(fn.blocks) == 0: continue
-
+  for fn in defined_funcs:
     first_label = list(fn.blocks.values())[0].label
     branches: dict[str, list[str]] = {"ret": []} # Where different branches could lead
     for block in fn.blocks.values():
@@ -2265,14 +2262,10 @@ def getFnInfo(mod: ir.Module, ctx: Context) -> Context:
     branches_to_first[fn.name] = fn_branches_to_first
 
   for fn_name in returns_to_address:
-    if len(fn.blocks) == 0: continue
-
     # If the function returns to an address, then callers must also return to an address
     returns_to_address[fn_name] |= any(returns_to_address[call] for call in call_graph[fn_name][0])
 
-  for fn in mod.functions.values():
-    if len(fn.blocks) == 0: continue
-
+  for fn in defined_funcs:
     # If we know the total size a function allocates and that it doesn't call any functions
     # that rely on the stack size, we don't need to increase the stack size
     skip_stack_size_change = total_alloca_size[fn.name] is not None and \

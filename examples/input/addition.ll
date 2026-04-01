@@ -9,10 +9,10 @@ define i32 @main() #0 {
   %2 = alloca i256, align 8
   %3 = alloca i256, align 8
   store i32 0, i32* %1, align 4
-  store i256 96976839732196071514843396302297947715055213764814165001358184236479351303400, i256* %2, align 8
-  %lol = load i256, i256* %2
+  store i256 96976839732196071514843396302297947715055213764814165001358184236479351303400, ptr %2, align 8
+  %lol = load i256, ptr %2
   %lol2 = add i256 %lol, 3897832
-  store i256 %lol2, i256* %3
+  store i256 %lol2, ptr %3
   ret i32 0
 }
 

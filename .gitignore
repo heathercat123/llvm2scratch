@@ -18,3 +18,8 @@ flamegraph.svg
 poetry.lock
 pyrightconfig.json
 pyrefly.toml
+
+# Temp
+ir.py
+parser.py
+parser_test.py

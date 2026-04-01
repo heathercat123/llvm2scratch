@@ -106,7 +106,7 @@ def decodeType(type: llvm.TypeRef) -> Type:
       assert all(isinstance(mem, AggTargetTy) for mem in members)
       members = cast(list[AggTargetTy], members)
       is_packed = str(type).replace(" ", "").startswith("<{")
-      return StructTy(name, is_packed, members)
+      return StructTy(is_packed, members)
 
     case llvm.TypeKind.metadata:
       return MetadataTy()

@@ -280,6 +280,7 @@ def transValue(val: ir.Value,
       num = val.value
       width = val.width
       if num < 0:
+        print("HIIIIII")
         num = (2 ** width) + num
 
       if val.width <= VARIABLE_MAX_BITS:
@@ -2172,13 +2173,16 @@ def getFnInfo(mod: ir.Module, ctx: Context) -> Context:
               raise CompException("Function pointers not supported")
             called_name = instr.func.name
             if called_name not in defined_func_names:
+              call_id += 1 # Note: external funcs still contribute to call ids even if unused
               continue
             calls.add(called_name)
             return_addresses.setdefault(called_name, list())
             return_addresses[called_name].append(localizeCallId(call_id, block.label, fn.name))
             call_id += 1
+
           case ir.Alloca():
             branch_alloca_size[fn.name][block.label] += getByteSize(instr.allocated_type)
+
           case ir.Phi():
             res_var_name = instr.result.name
             res_var = Variable(res_var_name, "var", fn.name)

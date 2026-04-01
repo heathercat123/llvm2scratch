@@ -1,5 +1,4 @@
 from __future__ import annotations
-from llvmlite import binding as llvm
 from dataclasses import dataclass
 from enum import Enum
 
@@ -150,7 +149,6 @@ class ArrayTy(AggTargetTy):
 
 @dataclass
 class StructTy(AggTargetTy):
-  name: str
   is_packed: bool
   members: list[AggTargetTy]
 

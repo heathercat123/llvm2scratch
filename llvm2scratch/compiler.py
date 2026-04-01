@@ -279,9 +279,8 @@ def transValue(val: ir.Value,
       # Calculate the two's complement version of the number
       num = val.value
       width = val.width
-      if num < 0:
-        print("HIIIIII")
-        num = (2 ** width) + num
+      assert num >= 0 # Previously two's complement parsing existed here,
+                      # but now the parser should handle it
 
       if val.width <= VARIABLE_MAX_BITS:
         return ValueAndBlocks(sb3.Known(num))

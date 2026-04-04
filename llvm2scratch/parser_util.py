@@ -334,9 +334,6 @@ def parseIEEEFloat(s: str) -> float:
   assert bits < 2**64
   return struct.unpack(">d", struct.pack(">Q", bits))[0]
 
-def isZeroInit(token: str) -> bool:
-  return token in ["zeroinitializer"]
-
 def getZeroInitVal(ty: Type) -> Value:
   return parseConstantToken(ty, "zeroinitializer", {})
 
@@ -383,7 +380,7 @@ def parseConstantToken(ty: Type, token: str, structs: dict[str, StructTy], is_ch
             undoTwosComplement(value, value_width),
             ty.width)
 
-      elif isZeroInit(token):
+      elif token == "zeroinitializer":
         value = 0
 
       else:
@@ -416,7 +413,7 @@ def parseConstantToken(ty: Type, token: str, structs: dict[str, StructTy], is_ch
           raise ValueError("0xL 128-bit fp format not yet supported")
         value = parseIEEEFloat(token)
 
-      elif isZeroInit(token):
+      elif token == "zeroinitializer":
         value = 0.0
 
       else:
@@ -425,7 +422,7 @@ def parseConstantToken(ty: Type, token: str, structs: dict[str, StructTy], is_ch
       return KnownFloatVal(ty, value)
 
     case PointerTy():
-      if token == "null" or isZeroInit(token):
+      if token in ["null", "zeroinitializer"]:
         return NullPtrVal(ty)
 
       elif token.startswith("@") or token.startswith("%"):
@@ -435,7 +432,7 @@ def parseConstantToken(ty: Type, token: str, structs: dict[str, StructTy], is_ch
         raise ValueError(f"Invalid pointer constant: {token}")
 
     case StructTy():
-      if isZeroInit(token):
+      if token == "zeroinitializer":
         mems = cast(list[KnownAggTargetVal], [getZeroInitVal(mem) for mem in ty.members])
         return KnownStructVal(ty, mems)
       else:
@@ -449,7 +446,7 @@ def parseConstantToken(ty: Type, token: str, structs: dict[str, StructTy], is_ch
         return KnownStructVal(ty, struct_mems)
 
     case ArrayTy():
-      if isZeroInit(token):
+      if token == "zeroinitializer":
         arr_vals = cast(list[KnownAggTargetVal], [getZeroInitVal(ty.inner) for _ in range(ty.size)])
         return KnownArrVal(ty, arr_vals)
 
@@ -475,7 +472,7 @@ def parseConstantToken(ty: Type, token: str, structs: dict[str, StructTy], is_ch
         return KnownArrVal(ty, values)
 
     case VecTy():
-      if isZeroInit(token):
+      if token == "zeroinitializer":
         vec_vals = cast(list[KnownVecTargetVal], [getZeroInitVal(ty.inner) for _ in range(ty.size)])
         return KnownVecVal(ty, vec_vals)
 

@@ -334,6 +334,18 @@ def transValue(val: ir.Value,
 
           return ValueAndBlocks(sb3.Known(base_ptr + known_offset))
 
+        case ir.Conversion():
+          match expr.opcode:
+            case ir.ConvOpcode.PtrToInt | ir.ConvOpcode.IntToPtr:
+              # No-op
+              return transValue(expr.value, ctx, bctx, is_global_init)
+
+            case ir.ConvOpcode.BitCast | ir.ConvOpcode.AddrSpaceCast:
+              raise CompException(f"Unsupported constexpr conv opcode {expr.opcode}")
+
+            case _:
+              raise CompException(f"Conv opcode {expr.opcode} is invalid for a constexpr")
+
         case _:
           raise CompException(f"Unsupported constant expression type: {expr}")
 

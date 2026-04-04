@@ -216,6 +216,7 @@ def getByteSize(ty: ir.Type) -> int:
       raise CompException(f"Unknown Type: {ty} (py type {type(ty)})")
 
 def getGepOffset(base_ptr_type: ir.Type, indices: list[sb3.Value]) -> tuple[int, defaultdict[int, list[sb3.Value]]]:
+  # TODO: support negative offsets, except with nuw
   known_offset: int = 0
   unknown_offsets: defaultdict[int, list[sb3.Value]] = defaultdict(list)
 
@@ -322,10 +323,8 @@ def transValue(val: ir.Value,
 
           indices = []
           for index_val in expr.indices:
-            index = transValue(index_val, ctx, bctx, is_global_init)
-            assert isinstance(index, ValueAndBlocks)
-            assert len(index.blocks) == 0
-            indices.append(index.value)
+            assert isinstance(index_val, ir.KnownIntVal)
+            indices.append(sb3.Known(index_val.value))
 
           known_offset, unknown_offsets = getGepOffset(expr.base_ptr_type, indices)
           assert len(unknown_offsets) == 0
@@ -2185,6 +2184,7 @@ def getFnInfo(mod: ir.Module, ctx: Context) -> Context:
       for instr in block.instrs:
         match instr:
           case ir.Call():
+            print(instr.func)
             if not isinstance(instr.func, ir.FunctionVal):
               raise CompException("Function pointers not supported")
             called_name = instr.func.name

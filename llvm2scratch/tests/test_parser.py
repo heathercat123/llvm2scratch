@@ -76,7 +76,7 @@ class TypeParse(unittest.TestCase):
 
   def testNamedStruct(self):
     self.assertEqual(
-      parseTypeConstantTokens(parseUntilEnd("%hehe { i16 1000 }"), {"hehe": StructTy(False, [IntegerTy(16)])}),
+      parseTypeConstantTokens(parseUntilEnd("%hehe { i16 1000 }"), {"hehe": StructTy(False, [IntegerTy(16)])}, []),
       (KnownStructVal(StructTy(False, [IntegerTy(16)]), [KnownIntVal(IntegerTy(16), 1000, 16)]), []))
 
   def testPtrAddrspace(self):
@@ -104,61 +104,61 @@ class TypeParse(unittest.TestCase):
 class ConstantParse(unittest.TestCase):
   def testParseInt(self):
     ty = IntegerTy(8)
-    self.assertEqual(parseConstantToken(ty, "120", {}), KnownIntVal(ty, 120, 8))
+    self.assertEqual(parseConstantToken(ty, "120", {}, []), KnownIntVal(ty, 120, 8))
 
   def testParseNegInt(self):
     ty = IntegerTy(8)
-    self.assertEqual(parseConstantToken(ty, "-2", {}), KnownIntVal(ty, 254, 8)) # 254 is equivelent to -2
+    self.assertEqual(parseConstantToken(ty, "-2", {}, []), KnownIntVal(ty, 254, 8)) # 254 is equivelent to -2
 
   def testParseBool(self):
     ty = IntegerTy(1)
-    self.assertEqual(parseConstantToken(ty, "true", {}), KnownIntVal(ty, 1, 1))
+    self.assertEqual(parseConstantToken(ty, "true", {}, []), KnownIntVal(ty, 1, 1))
 
   def testParseHex(self):
     ty = IntegerTy(16)
-    self.assertEqual(parseConstantToken(ty, "u0xFF", {}), KnownIntVal(ty, 255, 16))
+    self.assertEqual(parseConstantToken(ty, "u0xFF", {}, []), KnownIntVal(ty, 255, 16))
 
   def testParseSignedHex(self):
     ty = IntegerTy(8)
-    self.assertEqual(parseConstantToken(ty, "s0x01", {}), KnownIntVal(ty, 255, 8)) # 255 is equivelent to -1
+    self.assertEqual(parseConstantToken(ty, "s0x01", {}, []), KnownIntVal(ty, 255, 8)) # 255 is equivelent to -1
 
   def testTooLargeInt(self):
     with self.assertRaises(AssertionError) as context:
-      parseConstantToken(IntegerTy(8), "u0x100", {})
+      parseConstantToken(IntegerTy(8), "u0x100", {}, [])
 
   def testFloat(self):
-    parsed = parseConstantToken(DoubleTy(), "-3.1415", {})
+    parsed = parseConstantToken(DoubleTy(), "-3.1415", {}, [])
     assert isinstance(parsed, KnownFloatVal)
     self.assertAlmostEqual(parsed.value, -3.1415)
 
   def testFloatExpPos(self):
-    parsed = parseConstantToken(DoubleTy(), "-3.1415e+5", {})
+    parsed = parseConstantToken(DoubleTy(), "-3.1415e+5", {}, [])
     assert isinstance(parsed, KnownFloatVal)
     self.assertAlmostEqual(parsed.value, -3.1415 * 10**5)
 
   def testFloatExpNeg(self):
-    parsed = parseConstantToken(DoubleTy(), "-3.1415e-5", {})
+    parsed = parseConstantToken(DoubleTy(), "-3.1415e-5", {}, [])
     assert isinstance(parsed, KnownFloatVal)
     self.assertAlmostEqual(parsed.value, -3.1415 * 10**-5)
 
   def testFloatHex(self):
-    parsed = parseConstantToken(DoubleTy(), "0x432ff973cafa8000", {})
+    parsed = parseConstantToken(DoubleTy(), "0x432ff973cafa8000", {}, [])
     assert isinstance(parsed, KnownFloatVal)
     self.assertAlmostEqual(parsed.value, 4.5 * 10**15)
 
   def testParseFuncPtr(self):
     self.assertEqual(
-      parseConstantToken(PointerTy(0), "@cool_function", {}),
-      GlobalOrFuncPtrVal(PointerTy(0), "cool_function"))
+      parseConstantToken(PointerTy(0), "@cool_function", {}, []),
+      GlobalPtrVal(PointerTy(0), "cool_function"))
 
   def testParseNullPtr(self):
     self.assertEqual(
-      parseConstantToken(PointerTy(0), "zeroinitializer", {}),
+      parseConstantToken(PointerTy(0), "zeroinitializer", {}, []),
       NullPtrVal(PointerTy(0)))
 
   def testParseStruct(self):
     self.assertEqual(
-      parseTypeConstantTokens(parseUntilEnd("type <{ i1, ptr addrspace(7) }> <{ i1 true, ptr addrspace(7) null }>"), {}),
+      parseTypeConstantTokens(parseUntilEnd("type <{ i1, ptr addrspace(7) }> <{ i1 true, ptr addrspace(7) null }>"), {}, []),
       (KnownStructVal(
         StructTy(is_packed=True, members=[IntegerTy(width=1), PointerTy(addrspace=7)]),
         values=[
@@ -167,7 +167,7 @@ class ConstantParse(unittest.TestCase):
 
   def testParseZeroInitStruct(self):
     self.assertEqual(
-      parseTypeConstantTokens(parseUntilEnd("type <{ i1, [ 2 x float ] }> zeroinitializer"), {}),
+      parseTypeConstantTokens(parseUntilEnd("type <{ i1, [ 2 x float ] }> zeroinitializer"), {}, []),
       (KnownStructVal(
         StructTy(True, [IntegerTy(1), ArrayTy(FloatTy(), 2)]),
         values=[
@@ -178,17 +178,17 @@ class ConstantParse(unittest.TestCase):
 
   def testParseArray(self):
     self.assertEqual(
-      parseTypeConstantTokens(parseUntilEnd("[2 x float] [ float 3.14, float 3.141592 ]"), {}),
+      parseTypeConstantTokens(parseUntilEnd("[2 x float] [ float 3.14, float 3.141592 ]"), {}, []),
       (KnownArrVal(type=ArrayTy(inner=FloatTy(), size=2), values=[KnownFloatVal(type=FloatTy(), value=3.14), KnownFloatVal(type=FloatTy(), value=3.141592)]), []))
 
   def testParseCharArray(self):
     self.assertEqual(
-      parseTypeConstantTokens(parseUntilEnd('[3 x i8] c"hi\00"'), {}),
+      parseTypeConstantTokens(parseUntilEnd('[3 x i8] c"hi\00"'), {}, []),
       (KnownArrVal(type=ArrayTy(inner=IntegerTy(width=8), size=3), values=[KnownIntVal(type=IntegerTy(width=8), value=104, width=8), KnownIntVal(type=IntegerTy(width=8), value=105, width=8), KnownIntVal(type=IntegerTy(width=8), value=0, width=8)]), []))
 
   def testParseSplatVec(self):
     self.assertEqual(
-      parseTypeConstantTokens(parseUntilEnd("<2 x i32> splat (i32 3)"), {}),
+      parseTypeConstantTokens(parseUntilEnd("<2 x i32> splat (i32 3)"), {}, []),
       (KnownVecVal(
         type=VecTy(inner=IntegerTy(width=32), size=2),
         values=[
@@ -197,18 +197,18 @@ class ConstantParse(unittest.TestCase):
 
   def testParseGEP(self):
     self.assertEqual(
-      parseTypeConstantTokens(parseUntilEnd("ptr getelementptr (i8, ptr @hi, i64 8)"), {}),
+      parseTypeConstantTokens(parseUntilEnd("ptr getelementptr (i8, ptr @hi, i64 8)"), {}, []),
       (ConstExprVal(
         type=PointerTy(addrspace=0),
         expr=GetElementPtr(
           result=ResultLocalVar(name=""),
           base_ptr_type=IntegerTy(width=8),
-          base_ptr=GlobalOrFuncPtrVal(type=PointerTy(addrspace=0), name="hi"),
+          base_ptr=GlobalPtrVal(type=PointerTy(addrspace=0), name="hi"),
           indices=[KnownIntVal(type=IntegerTy(width=64), value=8, width=64)])), []))
 
   def testParseConv(self):
     self.assertEqual(
-      parseTypeConstantTokens(parseUntilEnd("i8 trunc (i16 32 to i8)"), {}),
+      parseTypeConstantTokens(parseUntilEnd("i8 trunc (i16 32 to i8)"), {}, []),
       (ConstExprVal(
         type=IntegerTy(width=8),
         expr=Conversion(result=ResultLocalVar(name=""),
@@ -218,7 +218,7 @@ class ConstantParse(unittest.TestCase):
 
   def parseAddConv(self):
     self.assertEqual(
-      parseTypeConstantTokens(parseUntilEnd("i8 add (i8 1, i8 2)"), {}),
+      parseTypeConstantTokens(parseUntilEnd("i8 add (i8 1, i8 2)"), {}, []),
       (ConstExprVal(
         type=IntegerTy(width=8),
         expr=BinaryOp(

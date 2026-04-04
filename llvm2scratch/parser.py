@@ -10,7 +10,7 @@ def getResultLocalVar(instr: llvm.ValueRef) -> ResultLocalVar | None:
     return ResultLocalVar(str(instr).split("=")[0].strip()[1:])
   return None
 
-def decodeType(type: llvm.TypeRef, structs: dict[str, StructTy]) -> Type:
+def decodeType(type: llvm.TypeRef, structs: dict[str, StructTy], func_names: list[str]) -> Type:
   match type.type_kind:
     case llvm.TypeKind.void:
       return VoidTy()
@@ -33,7 +33,7 @@ def decodeType(type: llvm.TypeRef, structs: dict[str, StructTy]) -> Type:
       return ty
 
     case llvm.TypeKind.vector:
-      inner_type = decodeType(next(type.elements), structs)
+      inner_type = decodeType(next(type.elements), structs, func_names)
       assert isinstance(inner_type, VecTargetTy)
       return VecTy(inner_type, type.element_count)
 
@@ -41,12 +41,12 @@ def decodeType(type: llvm.TypeRef, structs: dict[str, StructTy]) -> Type:
       return LabelTy()
 
     case llvm.TypeKind.array:
-      inner_type = decodeType(next(type.elements), structs)
+      inner_type = decodeType(next(type.elements), structs, func_names)
       assert isinstance(inner_type, AggTargetTy)
       return ArrayTy(inner_type, type.element_count)
 
     case llvm.TypeKind.struct:
-      members = [decodeType(ty, structs) for ty in type.elements]
+      members = [decodeType(ty, structs, func_names) for ty in type.elements]
       assert all(isinstance(mem, AggTargetTy) for mem in members)
       members = cast(list[AggTargetTy], members)
       is_packed = str(type).replace(" ", "").startswith("<{")
@@ -58,8 +58,8 @@ def decodeType(type: llvm.TypeRef, structs: dict[str, StructTy]) -> Type:
     case _:
       raise ValueError(f"Unknown type: {type.type_kind.name}")
 
-def decodeValue(value: llvm.ValueRef, mod: llvm.ModuleRef, structs: dict[str, StructTy]) -> Value:
-  type = decodeType(value.type, structs)
+def decodeValue(value: llvm.ValueRef, mod: llvm.ModuleRef, structs: dict[str, StructTy], func_names: list[str]) -> Value:
+  type = decodeType(value.type, structs, func_names)
 
   match value.value_kind:
     case llvm.ValueKind.argument:
@@ -69,24 +69,7 @@ def decodeValue(value: llvm.ValueRef, mod: llvm.ModuleRef, structs: dict[str, St
 
     case llvm.ValueKind.function:
       # A function reference
-      rest = str(value)
-      while not (rest.startswith("declare ") or rest.startswith("define ")):
-        assert "\n" in rest
-        rest = rest.split("\n", 1)[-1]
-      rest = rest.removeprefix("declare ").removeprefix("define ").strip()
-      tokens = parseUntilEnd(rest.split("\n")[0], ignore_unterminated=True)
-
-      i = 0
-      while tokens[i] in PRE_RET_FUNC_ATTRS or tokens[i].isdigit() or \
-          (tokens[i].startswith("(") and tokens[i].endswith(")")):
-        i += 1
-
-      ret_type, _ = parseTypeTokens(tokens[i:], structs)
-
-      name = value.name
-      intrinsic = decodeIntrinsic(name)
-
-      return FunctionVal(type, name, ret_type, intrinsic)
+      return FunctionVal(type, value.name)
 
     case llvm.ValueKind.instruction:
       # An instruction of which the SSA value is set from
@@ -96,7 +79,7 @@ def decodeValue(value: llvm.ValueRef, mod: llvm.ModuleRef, structs: dict[str, St
 
     case llvm.ValueKind.global_variable:
       # A global variable reference
-      return GlobalOrFuncPtrVal(type, value.name)
+      return GlobalPtrVal(type, value.name)
 
     case llvm.ValueKind.undef_value | llvm.ValueKind.poison_value:
       # Treat both as undef
@@ -134,15 +117,15 @@ def decodeValue(value: llvm.ValueRef, mod: llvm.ModuleRef, structs: dict[str, St
     case llvm.ValueKind.constant_expr | llvm.ValueKind.constant_data_vector:
       # A constant vector (e.g. <4 x i32> <i32 1, i32 2, i32 3, i32 4>)
       # A constant expression (e.g. getelementptr)
-      val, rest = parseTypeConstantTokens(parseUntilEnd(str(value)), structs)
+      val, rest = parseTypeConstantTokens(parseUntilEnd(str(value)), structs, func_names)
       assert len(rest) == 0
       return val
 
     case _:
       raise ValueError(f"Unknown value type: {value.value_kind.name}")
 
-def decodeLabel(value: llvm.ValueRef, mod: llvm.ModuleRef, structs: dict[str, StructTy]) -> LabelVal:
-  res = decodeValue(value, mod, structs)
+def decodeLabel(value: llvm.ValueRef, mod: llvm.ModuleRef, structs: dict[str, StructTy], func_names: list[str]) -> LabelVal:
+  res = decodeValue(value, mod, structs, func_names)
   assert isinstance(res, LabelVal)
   return res
 
@@ -154,7 +137,7 @@ def decodeIntrinsic(name: str) -> Intrinsic | None:
     raise ValueError(f"Unknown intrinsic {name}")
   return max(matches, key=lambda x: len(x.value))
 
-def decodeInstr(instr: llvm.ValueRef, mod: llvm.ModuleRef, structs: dict[str, StructTy]) -> Instr:
+def decodeInstr(instr: llvm.ValueRef, mod: llvm.ModuleRef, structs: dict[str, StructTy], func_names: list[str]) -> Instr:
   result = getResultLocalVar(instr)
   raw_instr_no_res = str(instr).strip()
   if result is not None:
@@ -163,15 +146,15 @@ def decodeInstr(instr: llvm.ValueRef, mod: llvm.ModuleRef, structs: dict[str, St
   match instr.opcode:
     case "ret":
       if len(list(instr.operands)) > 0:
-        value = decodeValue(next(instr.operands), mod, structs)
+        value = decodeValue(next(instr.operands), mod, structs, func_names)
         return Ret(value)
       return Ret(None)
 
     case "br":
       if len(list(instr.operands)) > 1:
         cond, branch_false, branch_true, *_ = instr.operands
-        return CondBr(decodeValue(cond, mod, structs), decodeLabel(branch_true, mod, structs), decodeLabel(branch_false, mod, structs))
-      return UncondBr(decodeLabel(next(instr.operands), mod, structs))
+        return CondBr(decodeValue(cond, mod, structs, func_names), decodeLabel(branch_true, mod, structs, func_names), decodeLabel(branch_false, mod, structs, func_names))
+      return UncondBr(decodeLabel(next(instr.operands), mod, structs, func_names))
 
     case "switch":
       value, default_label, *rest = instr.operands
@@ -179,11 +162,11 @@ def decodeInstr(instr: llvm.ValueRef, mod: llvm.ModuleRef, structs: dict[str, St
 
       branch_table: list[tuple[KnownIntVal, LabelVal]] = []
       for i in range(0, len(rest), 2):
-        case_val, label = decodeValue(rest[i], mod, structs), decodeLabel(rest[i+1], mod, structs)
+        case_val, label = decodeValue(rest[i], mod, structs, func_names), decodeLabel(rest[i+1], mod, structs, func_names)
         assert isinstance(case_val, KnownIntVal)
         branch_table.append((case_val, label))
 
-      return Switch(decodeValue(value, mod, structs), decodeLabel(default_label, mod, structs), branch_table)
+      return Switch(decodeValue(value, mod, structs, func_names), decodeLabel(default_label, mod, structs, func_names), branch_table)
 
     case "unreachable":
       return Unreachable()
@@ -191,7 +174,7 @@ def decodeInstr(instr: llvm.ValueRef, mod: llvm.ModuleRef, structs: dict[str, St
     case "fneg":
       assert result is not None
       operand, *_ = instr.operands
-      return UnaryOp(result, UnaryOpcode.FNeg, decodeValue(operand, mod, structs))
+      return UnaryOp(result, UnaryOpcode.FNeg, decodeValue(operand, mod, structs, func_names))
 
     case "add" | "fadd" | "sub" | "fsub" | "mul" | "fmul" | "udiv" | "sdiv" | "fdiv" | \
          "urem" | "srem" | "frem" | "shl" | "lshr" | "ashr" | "and" | "or" | "xor":
@@ -213,17 +196,17 @@ def decodeInstr(instr: llvm.ValueRef, mod: llvm.ModuleRef, structs: dict[str, St
 
       return BinaryOp(
         result, opcode,
-        decodeValue(left, mod, structs), decodeValue(right, mod, structs),
+        decodeValue(left, mod, structs, func_names), decodeValue(right, mod, structs, func_names),
         flags["nuw"], flags["nsw"], flags["exact"], flags["disjoint"])
 
     case "extractelement":
       assert result is not None
       vec, index, *_ = instr.operands
-      return ExtractElement(result, decodeValue(vec, mod, structs), decodeValue(index, mod, structs))
+      return ExtractElement(result, decodeValue(vec, mod, structs, func_names), decodeValue(index, mod, structs, func_names))
 
     case "insertelement":
       vec, item, index, *_ = instr.operands
-      return InsertElement(decodeValue(vec, mod, structs), decodeValue(item, mod, structs), decodeValue(index, mod, structs))
+      return InsertElement(decodeValue(vec, mod, structs, func_names), decodeValue(item, mod, structs, func_names), decodeValue(index, mod, structs, func_names))
 
     case "shufflevector":
       assert result is not None
@@ -231,26 +214,26 @@ def decodeInstr(instr: llvm.ValueRef, mod: llvm.ModuleRef, structs: dict[str, St
 
       rest = raw_instr_no_res.split("shufflevector ", 1)[-1].strip()
       tokens_list = parseCommaSeperated(rest)[2]
-      mask_val, rest = parseTypeConstantTokens(tokens_list, structs)
+      mask_val, rest = parseTypeConstantTokens(tokens_list, structs, func_names)
       assert len(rest) == 0
 
-      return ShuffleVector(result, decodeValue(vec1, mod, structs), decodeValue(vec2, mod, structs), mask_val)
+      return ShuffleVector(result, decodeValue(vec1, mod, structs, func_names), decodeValue(vec2, mod, structs, func_names), mask_val)
 
     case "insertvalue":
-      agg, element, *indices = [decodeValue(val, mod, structs) for val in instr.operands]
+      agg, element, *indices = [decodeValue(val, mod, structs, func_names) for val in instr.operands]
 
       return InsertValue(agg, element, indices)
 
     case "extractvalue":
       assert result is not None
-      agg, *indices = [decodeValue(val, mod, structs) for val in instr.operands]
+      agg, *indices = [decodeValue(val, mod, structs, func_names) for val in instr.operands]
 
       return ExtractValue(result, agg, indices)
 
     case "alloca":
       assert result is not None
 
-      num_elements = decodeValue(next(instr.operands), mod, structs)
+      num_elements = decodeValue(next(instr.operands), mod, structs, func_names)
 
       rest = raw_instr_no_res.split("alloca ", 1)[1].strip().removeprefix("inalloca ")
       allocated_type, _ = parseTypeTokens(parseUntilComma(rest), structs)
@@ -265,17 +248,17 @@ def decodeInstr(instr: llvm.ValueRef, mod: llvm.ModuleRef, structs: dict[str, St
       loaded_type, _ = parseTypeTokens(parseUntilComma(rest), structs)
 
       value, *_ = instr.operands
-      return Load(result, loaded_type, decodeValue(value, mod, structs))
+      return Load(result, loaded_type, decodeValue(value, mod, structs, func_names))
 
     case "store":
       value, addr, *_ = instr.operands
-      return Store(decodeValue(value, mod, structs), decodeValue(addr, mod, structs))
+      return Store(decodeValue(value, mod, structs, func_names), decodeValue(addr, mod, structs, func_names))
 
     case "getelementptr":
       assert result is not None
       base_ptr, *indices = instr.operands
 
-      index_values = [decodeValue(idx, mod, structs) for idx in indices]
+      index_values = [decodeValue(idx, mod, structs, func_names) for idx in indices]
 
       rest = raw_instr_no_res.split("getelementptr ", 1)[1].strip()
       keywords = ["inbounds", "inrange", "nusw", "nsw", "nuw"]
@@ -292,7 +275,7 @@ def decodeInstr(instr: llvm.ValueRef, mod: llvm.ModuleRef, structs: dict[str, St
 
       ptr_type, _ = parseTypeTokens(parseUntilComma(rest), structs)
 
-      return GetElementPtr(result, ptr_type, decodeValue(base_ptr, mod, structs), index_values)
+      return GetElementPtr(result, ptr_type, decodeValue(base_ptr, mod, structs, func_names), index_values)
 
     case "trunc" | "zext" | "sext" | "fptrunc" | "fpext" | "fptoui" | "fptosi" | \
          "uitofp" | "sitofp" | "ptrtoint" | "ptrtoaddr" | "inttoptr" | "bitcast" | \
@@ -317,7 +300,7 @@ def decodeInstr(instr: llvm.ValueRef, mod: llvm.ModuleRef, structs: dict[str, St
           else:
             break
 
-      return Conversion(result, opcode, decodeValue(value, mod, structs), conv_type, flags["nuw"], flags["nsw"])
+      return Conversion(result, opcode, decodeValue(value, mod, structs, func_names), conv_type, flags["nuw"], flags["nsw"])
 
     case "icmp":
       assert result is not None
@@ -328,7 +311,7 @@ def decodeInstr(instr: llvm.ValueRef, mod: llvm.ModuleRef, structs: dict[str, St
       rest = rest.removeprefix("samesign ")
 
       cond = ICmpCond(rest.split(" ", 1)[0])
-      return ICmp(result, cond, decodeValue(left, mod, structs), decodeValue(right, mod, structs), samesign)
+      return ICmp(result, cond, decodeValue(left, mod, structs, func_names), decodeValue(right, mod, structs, func_names), samesign)
 
     case "fcmp":
       assert result is not None
@@ -343,25 +326,25 @@ def decodeInstr(instr: llvm.ValueRef, mod: llvm.ModuleRef, structs: dict[str, St
           cond_found = True
           cond = FCmpCond(cond_str)
 
-      return FCmp(result, cond, decodeValue(left, mod, structs), decodeValue(right, mod, structs))
+      return FCmp(result, cond, decodeValue(left, mod, structs, func_names), decodeValue(right, mod, structs, func_names))
 
     case "phi":
       assert result is not None
 
       incoming: list[tuple[Value, LabelVal]] = []
       for val, label in zip(instr.operands, instr.incoming_blocks):
-        incoming.append((decodeValue(val, mod, structs), decodeLabel(label, mod, structs)))
+        incoming.append((decodeValue(val, mod, structs, func_names), decodeLabel(label, mod, structs, func_names)))
       return Phi(result, incoming)
 
     case "select":
       assert result is not None
       cond, true_val, false_val, *_ = instr.operands
-      return Select(result, decodeValue(cond, mod, structs), decodeValue(true_val, mod, structs), decodeValue(false_val, mod, structs))
+      return Select(result, decodeValue(cond, mod, structs, func_names), decodeValue(true_val, mod, structs, func_names), decodeValue(false_val, mod, structs, func_names))
 
     case "call":
       *args, callee = instr.operands
-      func_val = decodeValue(callee, mod, structs)
-      arg_vals = [decodeValue(arg, mod, structs) for arg in args]
+      func_val = decodeValue(callee, mod, structs, func_names)
+      arg_vals = [decodeValue(arg, mod, structs, func_names) for arg in args]
 
       tail_kind = CallTailKind.NoTail
       if raw_instr_no_res.startswith("tail "):
@@ -369,22 +352,43 @@ def decodeInstr(instr: llvm.ValueRef, mod: llvm.ModuleRef, structs: dict[str, St
       elif raw_instr_no_res.startswith("musttail "):
         tail_kind = CallTailKind.MustTail
 
-      return Call(result, func_val, arg_vals, tail_kind)
+      tokens = parseUntilEnd(raw_instr_no_res)
+
+      i = 0
+      while tokens[i] in PRE_RET_CALL_ATTRS or tokens[i].isdigit() or \
+          (tokens[i].startswith("(") and tokens[i].endswith(")")):
+        i += 1
+
+      return_type_or_fn_type, _ = parseTypeTokens(tokens[i:], structs)
+      if isinstance(return_type_or_fn_type, FuncTy):
+        return_type = return_type_or_fn_type.return_type
+        # TODO support vararg calling
+      else:
+        return_type = return_type_or_fn_type
+
+      # Intrinsics cannot be referenced indirectly
+      intrinsic = decodeIntrinsic(func_val.name) if isinstance(func_val, FunctionVal) else None
+
+      return Call(result, func_val, return_type, arg_vals, tail_kind, intrinsic)
 
     case "freeze":
       assert result is not None
       value, *_ = instr.operands
-      return Freeze(result, decodeValue(value, mod, structs))
+      return Freeze(result, decodeValue(value, mod, structs, func_names))
 
     case _:
       raise ValueError(f"Opcode {instr.opcode} not implemented")
 
 def decodeModule(mod: llvm.ModuleRef) -> Module:
+  func_names = list()
+  for func in mod.functions:
+    func_names.append(func.name)
+
   structs: dict[str, StructTy] = {}
   for struct in mod.struct_types:
     # nb Decode type doesn't rely on structs for StructTy yet, but if it did we would need to treat
     # structs referencing structs correctly
-    ty = decodeType(struct, {})
+    ty = decodeType(struct, {}, func_names)
     assert isinstance(ty, StructTy)
     structs.update({struct.name: ty})
 
@@ -407,7 +411,7 @@ def decodeModule(mod: llvm.ModuleRef) -> Module:
     else:
       tokens[end] = tokens[end].removesuffix(",")
 
-    glob_init, rest = parseTypeConstantTokens(tokens[start:end+1], structs)
+    glob_init, rest = parseTypeConstantTokens(tokens[start:end+1], structs, func_names)
     assert len(rest) == 0
     assert isinstance(glob_init, KnownVal)
 
@@ -417,28 +421,39 @@ def decodeModule(mod: llvm.ModuleRef) -> Module:
 
   for func in mod.functions:
     fn_name = func.name
-    fn_return_type = decodeValue(func, mod, structs)
-    assert isinstance(fn_return_type, FunctionVal)
-    fn_ret_type = fn_return_type.return_type
+
+    fn_rest = str(func)
+    while not (fn_rest.startswith("declare ") or fn_rest.startswith("define ")):
+      assert "\n" in fn_rest
+      fn_rest = fn_rest.split("\n", 1)[-1]
+    fn_rest = fn_rest.removeprefix("declare ").removeprefix("define ").strip()
+    tokens = parseUntilEnd(fn_rest.split("\n")[0], ignore_unterminated=True)
+
+    i = 0
+    while tokens[i] in PRE_RET_FUNC_ATTRS or tokens[i].isdigit() or \
+        (tokens[i].startswith("(") and tokens[i].endswith(")")):
+      i += 1
+
+    fn_ret_type, _ = parseTypeTokens(tokens[i:], structs)
 
     # TODO Vararg functions
 
     fn_args: list[ArgumentVal] = []
     for arg in func.arguments:
-      arg_val = decodeValue(arg, mod, structs)
+      arg_val = decodeValue(arg, mod, structs, func_names)
       assert isinstance(arg_val, ArgumentVal)
       fn_args.append(arg_val)
 
     fn_blocks: dict[str, Block] = {}
 
     for block in func.blocks:
-      block_val = decodeValue(block, mod, structs)
+      block_val = decodeValue(block, mod, structs, func_names)
       assert isinstance(block_val, LabelVal)
       block_name = block_val.label
 
       instructions: list[Instr] = []
       for instr in block.instructions:
-        instructions.append(decodeInstr(instr, mod, structs))
+        instructions.append(decodeInstr(instr, mod, structs, func_names))
       fn_blocks.update({block_name: Block(block_name, instructions)})
 
     intrinsic = decodeIntrinsic(fn_name)

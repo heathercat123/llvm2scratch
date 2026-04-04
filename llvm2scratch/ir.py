@@ -192,15 +192,13 @@ class ArgumentVal(Value):
 @dataclass
 class FunctionVal(KnownVal):
   name: str
-  return_type: Type
-  intrinsic: Intrinsic | None
 
 @dataclass
 class LocalVarVal(Value):
   name: str
 
 @dataclass
-class GlobalOrFuncPtrVal(KnownVal, KnownAggTargetVal):
+class GlobalPtrVal(KnownVal, KnownAggTargetVal):
   name: str
 
 @dataclass
@@ -382,8 +380,10 @@ class Select(Instr, HasResult):
 @dataclass
 class Call(Instr, MaybeHasResult):
   func: Value
+  return_type: Type
   args: list[Value]
   tail_kind: CallTailKind
+  intrinsic: Intrinsic | None
 
 @dataclass
 class Freeze(Instr, HasResult):

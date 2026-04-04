@@ -5,6 +5,30 @@ import re
 
 from . ir import *
 
+# Parameter Attributes
+PARAM_ATTRS = [
+  "zeroext", "signext", "noext", "inreg",
+  "byval", "byref", "preallocated", "inalloca",
+  "sret", "elementtype", "align", "noalias",
+  "captures", "nofree", "nest", "returned",
+  "nonnull", "dereferenceable",
+  "dereferenceable_or_null", "swiftself",
+  "swiftasync", "swifterror", "immarg",
+  "noundef", "nofpclass", "alignstack",
+  "allocalign", "allocptr", "readnone",
+  "readonly", "writeonly", "writeable",
+  "initializes", "dead_on_unwind",
+  "dead_on_return", "range"
+]
+
+# Calling Conventions
+CALL_CONV = [
+  "ccc", "fastcc", "coldcc", "ghccc", "anyregcc",
+  "preserve_mostcc", "preserve_allcc", "preserve_nonecc",
+  "cxx_fast_tlscc", "tailcc", "swiftcc",
+  "swifttailcc", "cfguard_checkcc", "cc",
+]
+
 # Note some of these attrs may contain a number or something surrounded by brackets after
 PRE_RET_FUNC_ATTRS = [
   # Linkage Types
@@ -22,24 +46,31 @@ PRE_RET_FUNC_ATTRS = [
   "dllimport", "dllexport", "localdynamic",
 
   # Calling Convention
-  "ccc", "fastcc", "coldcc", "ghccc", "anyregcc",
-  "preserve_mostcc", "preserve_allcc", "preserve_nonecc",
-  "cxx_fast_tlscc", "tailcc", "swiftcc",
-  "swifttailcc", "cfguard_checkcc", "cc",
+  *CALL_CONV,
 
   # Parameter Attributes for return type
-  "zeroext", "signext", "noext", "inreg",
-  "byval", "byref", "preallocated", "inalloca",
-  "sret", "elementtype", "align", "noalias",
-  "captures", "nofree", "nest", "returned",
-  "nonnull", "dereferenceable",
-  "dereferenceable_or_null", "swiftself",
-  "swiftasync", "swifterror", "immarg",
-  "noundef", "nofpclass", "alignstack",
-  "allocalign", "allocptr", "readnone",
-  "readonly", "writeonly", "writeable",
-  "initializes", "dead_on_unwind",
-  "dead_on_return", "range",
+  *PARAM_ATTRS
+]
+
+PRE_RET_CALL_ATTRS = [
+  # Tail call optimization markers
+  "tail", "musttail", "notail",
+
+  # The call instruction itself
+  "call",
+
+  # Fast Math Flags
+  "nnan", "ninf", "nsz", "arcp", "contract",
+  "afn", "reassoc", "fast",
+
+  # Calling Convention
+  *CALL_CONV,
+
+  # Parameter Attributes for return type
+  *PARAM_ATTRS,
+
+  # Addrspace of called function
+  "addrspace",
 ]
 
 # Returns (decoded, rest, parsed_len), where parsed_len is the length
@@ -335,9 +366,9 @@ def parseIEEEFloat(s: str) -> float:
   return struct.unpack(">d", struct.pack(">Q", bits))[0]
 
 def getZeroInitVal(ty: Type) -> Value:
-  return parseConstantToken(ty, "zeroinitializer", {})
+  return parseConstantToken(ty, "zeroinitializer", {}, [])
 
-def parseBracketedListToken(token: str, size: int, opening: str, closing: str, structs: dict[str, StructTy]) -> list[Value]:
+def parseBracketedListToken(token: str, size: int, opening: str, closing: str, structs: dict[str, StructTy], func_names: list[str]) -> list[Value]:
   if not (token.startswith(opening) and token.endswith(closing)):
     raise ValueError(f"Invalid constant: {token}")
 
@@ -346,13 +377,13 @@ def parseBracketedListToken(token: str, size: int, opening: str, closing: str, s
 
   values = []
   for mem_tokens in member_tokens:
-    mem, rest = parseTypeConstantTokens(mem_tokens, structs)
+    mem, rest = parseTypeConstantTokens(mem_tokens, structs, func_names)
     assert len(rest) == 0
     values.append(mem)
 
   return values
 
-def parseConstantToken(ty: Type, token: str, structs: dict[str, StructTy], is_char_arr: bool=False, is_splat: bool=False) -> Value:
+def parseConstantToken(ty: Type, token: str, structs: dict[str, StructTy], func_names: list[str], is_char_arr: bool=False, is_splat: bool=False) -> Value:
   if token in ["undef", "poison"]:
     return UndefVal(ty)
 
@@ -426,7 +457,11 @@ def parseConstantToken(ty: Type, token: str, structs: dict[str, StructTy], is_ch
         return NullPtrVal(ty)
 
       elif token.startswith("@") or token.startswith("%"):
-        return GlobalOrFuncPtrVal(ty, token[1:])
+        name = token[1:]
+        if name in func_names:
+          return FunctionVal(ty, name)
+        else:
+          return GlobalPtrVal(ty, name)
 
       else:
         raise ValueError(f"Invalid pointer constant: {token}")
@@ -438,7 +473,7 @@ def parseConstantToken(ty: Type, token: str, structs: dict[str, StructTy], is_ch
       else:
         struct_mems = []
         opening, closing = ("<{", "}>") if ty.is_packed else ("{", "}")
-        mems = parseBracketedListToken(token, len(ty.members), opening, closing, structs)
+        mems = parseBracketedListToken(token, len(ty.members), opening, closing, structs, func_names)
         for i, mem in enumerate(mems):
           assert isinstance(mem, KnownAggTargetVal)
           assert mem.type == ty.members[i]
@@ -452,7 +487,7 @@ def parseConstantToken(ty: Type, token: str, structs: dict[str, StructTy], is_ch
 
       elif not is_char_arr:
         arr_mems = []
-        mems = parseBracketedListToken(token, ty.size, "[", "]", structs)
+        mems = parseBracketedListToken(token, ty.size, "[", "]", structs, func_names)
         for mem in mems:
           assert isinstance(mem, KnownAggTargetVal)
           assert mem.type == ty.inner
@@ -478,7 +513,7 @@ def parseConstantToken(ty: Type, token: str, structs: dict[str, StructTy], is_ch
 
       elif not is_splat:
         vec_mems = []
-        mems = parseBracketedListToken(token, ty.size, "<", ">", structs)
+        mems = parseBracketedListToken(token, ty.size, "<", ">", structs, func_names)
         for mem in mems:
           assert isinstance(mem, KnownVecTargetVal)
           assert mem.type == ty.inner
@@ -488,7 +523,7 @@ def parseConstantToken(ty: Type, token: str, structs: dict[str, StructTy], is_ch
       else:
         if not (token.startswith("(") and token.endswith(")")):
           raise ValueError(f"Invalid splat vec constant: {token}")
-        value, rest = parseTypeConstantTokens(parseUntilEnd(token[1:-1]), structs)
+        value, rest = parseTypeConstantTokens(parseUntilEnd(token[1:-1]), structs, func_names)
         assert len(rest) == 0
         assert isinstance(value, KnownVecTargetVal)
         assert value.type == ty.inner
@@ -497,19 +532,19 @@ def parseConstantToken(ty: Type, token: str, structs: dict[str, StructTy], is_ch
     case _:
       raise ValueError(f"Invalid constant - type {ty} not supported: {token}")
 
-def getConstExprBracketValues(brackets: str, count: int, structs: dict[str, StructTy]) -> list[Value]:
+def getConstExprBracketValues(brackets: str, count: int, structs: dict[str, StructTy], func_names: list[str]) -> list[Value]:
   assert brackets.startswith("(") and brackets.endswith(")")
   tokens_list = parseCommaSeperated(brackets[1:-1])
   values = []
   for tokens in tokens_list:
-    parsed, rest = parseTypeConstantTokens(tokens, structs)
+    parsed, rest = parseTypeConstantTokens(tokens, structs, func_names)
     assert len(rest) == 0
     values.append(parsed)
   assert len(values) == count
   return values
 
 # Parse a type and constant i.e. i32 712
-def parseTypeConstantTokens(tokens: list[str], structs: dict[str, StructTy]) -> tuple[Value, list[str]]:
+def parseTypeConstantTokens(tokens: list[str], structs: dict[str, StructTy], func_names: list[str]) -> tuple[Value, list[str]]:
   ty, tokens = parseTypeTokens(tokens, structs)
   is_char_arr = is_splat = False
 
@@ -526,7 +561,7 @@ def parseTypeConstantTokens(tokens: list[str], structs: dict[str, StructTy]) -> 
 
     opcode = ConvOpcode(tokens[0])
     # casted_tokens[:-1] to remove "to"
-    casted, rest_casted_tokens = parseTypeConstantTokens(casted_tokens[:-1], structs)
+    casted, rest_casted_tokens = parseTypeConstantTokens(casted_tokens[:-1], structs, func_names)
     assert len(rest_casted_tokens) == 0
     casted_type, rest = parseTypeTokens(parseUntilEnd(rest), structs)
     assert len(rest) == 0
@@ -551,7 +586,7 @@ def parseTypeConstantTokens(tokens: list[str], structs: dict[str, StructTy]) -> 
 
     parsed_parts = []
     for part in parts[1:]:
-      parsed, rest = parseTypeConstantTokens(part, structs)
+      parsed, rest = parseTypeConstantTokens(part, structs, func_names)
       assert len(rest) == 0
       parsed_parts.append(parsed)
 
@@ -562,19 +597,19 @@ def parseTypeConstantTokens(tokens: list[str], structs: dict[str, StructTy]) -> 
       GetElementPtr(ResultLocalVar(""), base_ptr_type, base_ptr, parsed_parts[1:])), tokens[i+1:]
 
   elif tokens[0] == "extractelement":
-    agg, idx = getConstExprBracketValues(tokens[1], 2, structs)
+    agg, idx = getConstExprBracketValues(tokens[1], 2, structs, func_names)
     return ConstExprVal(ty, ExtractElement(ResultLocalVar(""), agg, idx)), tokens[2:]
 
   elif tokens[0] == "insertelement":
-    agg, el, idx = getConstExprBracketValues(tokens[1], 3, structs)
+    agg, el, idx = getConstExprBracketValues(tokens[1], 3, structs, func_names)
     return ConstExprVal(ty, InsertElement(agg, el, idx)), tokens[2:]
 
   elif tokens[0] == "shufflevector":
-    fst_vector, snd_vector, mask_vector = getConstExprBracketValues(tokens[1], 3, structs)
+    fst_vector, snd_vector, mask_vector = getConstExprBracketValues(tokens[1], 3, structs, func_names)
     return ConstExprVal(ty, ShuffleVector(ResultLocalVar(""), fst_vector, snd_vector, mask_vector)), tokens[2:]
 
   elif tokens[0] in ["add", "sub", "mul", "shl", "xor"]:
-    lhs, rhs = getConstExprBracketValues(tokens[1], 2, structs)
+    lhs, rhs = getConstExprBracketValues(tokens[1], 2, structs, func_names)
     opcode = BinaryOpcode(tokens[0])
     return ConstExprVal(ty, BinaryOp(ResultLocalVar(""), opcode, lhs, rhs, False, False, False, False)), tokens[2:]
 
@@ -591,4 +626,4 @@ def parseTypeConstantTokens(tokens: list[str], structs: dict[str, StructTy]) -> 
       tokens = tokens[1:]
       is_splat = True
 
-    return parseConstantToken(ty, tokens[0], structs, is_char_arr, is_splat), tokens[1:]
+    return parseConstantToken(ty, tokens[0], structs, func_names, is_char_arr, is_splat), tokens[1:]

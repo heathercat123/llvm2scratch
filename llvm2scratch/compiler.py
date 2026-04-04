@@ -258,17 +258,13 @@ def transValue(val: ir.Value,
                ctx: Context, bctx: BlockInfo | None,
                is_global_init: bool=False) -> ValueAndBlocks | IdxbleValueAndBlocks:
   match val:
-    case ir.LocalVarVal() | ir.ArgumentVal() | ir.GlobalOrFuncPtrVal():
+    case ir.LocalVarVal() | ir.ArgumentVal() | ir.GlobalPtrVal():
       var = transVar(val, bctx)
       res = var.getValue()
-      if isinstance(val, ir.GlobalOrFuncPtrVal):
-        if val.name not in ctx.globvar_to_ptr:
-          raise CompException(f"Function pointers are not yet supported (reference to @{val.name})")
-
-        elif ctx.cfg.opti or is_global_init:
-          # Global variables store their address in their variable
-          # when optimizations are enabled we use this address directly
-          res = sb3.Known(ctx.globvar_to_ptr[val.name])
+      if isinstance(val, ir.GlobalPtrVal) and (ctx.cfg.opti or is_global_init):
+        # Global variables store their address in their variable
+        # when optimizations are enabled we use this address directly
+        res = sb3.Known(ctx.globvar_to_ptr[val.name])
 
       size = getByteSize(val.type)
       if isinstance(val, (ir.LocalVarVal, ir.ArgumentVal)) and size > 1:
@@ -315,11 +311,14 @@ def transValue(val: ir.Value,
       # Since pointers start from one anyway (because lists start from one in scratch), zero can be used for null
       return ValueAndBlocks(sb3.Known(0))
 
+    case ir.FunctionVal():
+      raise CompException(f"Function pointers are not yet supported (reference to @{val.name})")
+
     case ir.ConstExprVal():
       expr = val.expr
       match expr:
         case ir.GetElementPtr():
-          assert isinstance(expr.base_ptr, ir.GlobalOrFuncPtrVal)
+          assert isinstance(expr.base_ptr, ir.GlobalPtrVal)
 
           indices = []
           for index_val in expr.indices:
@@ -358,7 +357,7 @@ def transVar(var: ir.Value | ir.ResultLocalVar | str, bctx: BlockInfo | None) ->
       return localizeVar(var, False, bctx)
     case ir.LocalVarVal() | ir.ArgumentVal() | ir.ResultLocalVar():
       return localizeVar(var.name, False, bctx)
-    case ir.GlobalOrFuncPtrVal():
+    case ir.GlobalPtrVal():
       return localizeVar(var.name, True, bctx)
     case _:
       raise CompException(f"Invalid type for var {var}: {type(var)}")
@@ -1812,6 +1811,35 @@ def getTerminatorInstrLabels(instr: ir.Instr) -> set[str]:
       raise CompException(f"Unsupported terminator instruction "
                           f"opcode {instr} (type {type(instr)})")
 
+def getInstrValues(instr: ir.Instr, include_called_funcs: bool=True) -> list[ir.Value]:
+  match instr:
+    case ir.Unreachable() | ir.Alloca() | ir.Phi():
+      return []
+    case ir.Ret() | ir.Conversion() | ir.Freeze():
+      return [] if instr.value is None else [instr.value]
+    case ir.Load():
+      return [instr.address]
+    case ir.Store():
+      return [instr.address, instr.value]
+    case ir.Call():
+      return [instr.func, *instr.args] if include_called_funcs else [*instr.args]
+    case ir.UnaryOp():
+      return [instr.operand]
+    case ir.BinaryOp() | ir.ICmp() | ir.FCmp():
+      return [instr.left, instr.right]
+    case ir.Br() | ir.Switch():
+      return [instr.cond] if isinstance(instr, (ir.CondBr, ir.Switch)) else []
+    case ir.Select():
+      return [instr.cond, instr.true_value, instr.false_value]
+    case ir.GetElementPtr():
+      return [instr.base_ptr, *instr.indices]
+    case ir.ExtractValue():
+      return [instr.agg, *instr.indices]
+    case ir.InsertValue():
+      return [instr.agg, instr.element, *instr.indices]
+    case _:
+      raise CompException(f"Unknown instruction {instr} (type {type(instr)})")
+
 def getInstrVarUse(instr: ir.Instr,
     block_phi_info: defaultdict[str, list[tuple[Variable, ir.Value]]]
   ) -> tuple[set[str], set[str], dict[str, int]]:
@@ -1820,54 +1848,29 @@ def getInstrVarUse(instr: ir.Instr,
   modifies: set[str] = set()
   depends_var_sizes: dict[str, int] = {}
 
+  vals = getInstrValues(instr)
+
   if isinstance(instr, (ir.HasResult, ir.MaybeHasResult)):
     if instr.result is not None:
       modifies.add(instr.result.name)
 
-  vals: list[ir.Value | None]
-  match instr:
-    case ir.Unreachable() | ir.Alloca() | ir.Phi():
-      # For phi, even though it might depend on a value, the
-      # branch instruction is made responsible instead
-      vals = []
-    case ir.Ret() | ir.Conversion() | ir.Freeze():
-      vals = [instr.value]
-    case ir.Load():
-      vals = [instr.address]
-    case ir.Store():
-      vals = [instr.address, instr.value]
-    case ir.Call():
-      vals = [instr.func, *instr.args]
-    case ir.UnaryOp():
-      vals = [instr.operand]
-    case ir.BinaryOp() | ir.ICmp() | ir.FCmp():
-      vals = [instr.left, instr.right]
-    case ir.Br() | ir.Switch():
-      vals = [instr.cond] if isinstance(instr, (ir.CondBr, ir.Switch)) else []
-      poss_labels = getTerminatorInstrLabels(instr) - {"ret"}
-      for label in poss_labels:
-        vals.extend([value for _, value in block_phi_info[label]])
-    case ir.Select():
-      vals = [instr.cond, instr.true_value, instr.false_value]
-    case ir.GetElementPtr():
-      vals = [instr.base_ptr, *instr.indices]
-    case ir.ExtractValue():
-      vals = [instr.agg, *instr.indices]
-    case ir.InsertValue():
-      vals = [instr.agg, instr.element, *instr.indices]
-    case _:
-      raise CompException(f"Unknown instruction {instr} (type {type(instr)})")
+  # Extend used values to values downstream of the branch instr
+  # n.b. For phi, even though it might depend on a value, the
+  # branch instruction is made responsible instead
+  if isinstance(instr, (ir.Br, ir.Switch)):
+    poss_labels = getTerminatorInstrLabels(instr) - {"ret"}
+    for label in poss_labels:
+      vals.extend([value for _, value in block_phi_info[label]])
 
   for val in vals:
-    if val is not None:
-      match val:
-        case ir.ArgumentVal() | ir.LocalVarVal():
-          depends.add(val.name)
-          depends_var_sizes[val.name] = getByteSize(val.type)
-        case ir.GlobalOrFuncPtrVal() | ir.KnownVal():
-          pass
-        case _:
-          raise CompException(f"Unknown Value: {val}")
+    match val:
+      case ir.ArgumentVal() | ir.LocalVarVal():
+        depends.add(val.name)
+        depends_var_sizes[val.name] = getByteSize(val.type)
+      case ir.KnownVal():
+        pass
+      case _:
+        raise CompException(f"Unknown Value: {val}")
 
   return depends, modifies, depends_var_sizes
 
@@ -1956,6 +1959,34 @@ def getFuncBranchesVarUse(func: ir.Function,
     res[start_label] = BlockVarUse(agg_depends, agg_modifies, agg_branches, total_depends_var_sizes)
 
   return res
+
+def getValueFuncPtrRefs(value: ir.Value, global_names: list[str]) -> set[str]:
+  match value:
+    case ir.FunctionVal():
+      return {value.name}
+    case ir.KnownArrVal() | ir.KnownStructVal() | ir.KnownVecVal():
+      return set().union(*(getValueFuncPtrRefs(mem, global_names) for mem in value.values))
+    case ir.ConstExprVal():
+      return set().union(*(getValueFuncPtrRefs(val, global_names) for val in getInstrValues(value.expr, False)))
+    case _:
+      # Nothing else contains a func ptr or nested values
+      return set()
+
+def getFuncPtrRefs(mod: ir.Module) -> list[str]:
+  global_names = list(mod.global_vars.keys())
+  all_refs = set()
+
+  for glob in mod.global_vars.values():
+    all_refs |= getValueFuncPtrRefs(glob.init, global_names)
+
+  for func in mod.functions.values():
+    for block in func.blocks.values():
+      for instr in block.instrs:
+        for val in getInstrValues(instr, False):
+          all_refs |= getValueFuncPtrRefs(val, global_names)
+
+  # Sort alphabetically to get a consistent compiled result
+  return sorted(list(all_refs))
 
 def transTerminatorInstr(instr: ir.Instr,
                          ctx: Context, bctx: BlockInfo) -> tuple[sb3.BlockList, Context]:
@@ -2184,7 +2215,6 @@ def getFnInfo(mod: ir.Module, ctx: Context) -> Context:
       for instr in block.instrs:
         match instr:
           case ir.Call():
-            print(instr.func)
             if not isinstance(instr.func, ir.FunctionVal):
               raise CompException("Function pointers not supported")
             called_name = instr.func.name
@@ -2423,14 +2453,14 @@ def transFuncs(mod: ir.Module, ctx: Context) -> Context:
           if instr.tail_kind == ir.CallTailKind.MustTail:
             raise CompException("Tail calls not supported")
 
-          if instr.func.intrinsic is not None:
-            instr_code = transIntrinsic(instr.func.intrinsic, args, ctx, bctx)
+          if instr.intrinsic is not None:
+            instr_code = transIntrinsic(instr.intrinsic, args, ctx, bctx)
             bctx.code.add(instr_code)
             bctx.next_call_id += 1
           else:
             callee_info = ctx.fn_info[callee_name]
             result = None if instr.result is None else transVar(instr.result, bctx)
-            result_size = None if instr.result is None else getByteSize(instr.func.return_type)
+            result_size = None if instr.result is None else getByteSize(instr.return_type)
             following_instrs = block.instrs[instr_index + 1:]
 
             ctx, bctx = transComplexCall(info, callee_info, args, result, result_size, following_instrs, ctx, bctx)
@@ -2680,6 +2710,8 @@ def compile(llvm: str | ir.Module, cfg: Config | None = None) -> tuple[sb3.Proje
 
   # Reset call stack
   initblocks.add(sb3.EditCounter("clear"))
+
+  print(getFuncPtrRefs(mod))
 
   # Setup stack
   globblocks, ctx = transGlobals(mod, ctx)

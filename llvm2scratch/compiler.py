@@ -257,10 +257,10 @@ def transValue(val: ir.Value,
                ctx: Context, bctx: BlockInfo | None,
                is_global_init: bool=False) -> ValueAndBlocks | IdxbleValueAndBlocks:
   match val:
-    case ir.LocalVarVal() | ir.ArgumentVal() | ir.GlobalVarVal():
+    case ir.LocalVarVal() | ir.ArgumentVal() | ir.GlobalOrFuncPtrVal():
       var = transVar(val, bctx)
       res = var.getValue()
-      if isinstance(val, ir.GlobalVarVal):
+      if isinstance(val, ir.GlobalOrFuncPtrVal):
         if val.name not in ctx.globvar_to_ptr:
           raise CompException(f"Function pointers are not yet supported (reference to @{val.name})")
 
@@ -315,22 +315,27 @@ def transValue(val: ir.Value,
       return ValueAndBlocks(sb3.Known(0))
 
     case ir.ConstExprVal():
-      gep = val.expr
-      assert isinstance(gep.base_ptr, ir.GlobalVarVal)
+      expr = val.expr
+      match expr:
+        case ir.GetElementPtr():
+          assert isinstance(expr.base_ptr, ir.GlobalOrFuncPtrVal)
 
-      indices = []
-      for index_val in gep.indices:
-        index = transValue(index_val, ctx, bctx, is_global_init)
-        assert isinstance(index, ValueAndBlocks)
-        assert len(index.blocks) == 0
-        indices.append(index.value)
+          indices = []
+          for index_val in expr.indices:
+            index = transValue(index_val, ctx, bctx, is_global_init)
+            assert isinstance(index, ValueAndBlocks)
+            assert len(index.blocks) == 0
+            indices.append(index.value)
 
-      known_offset, unknown_offsets = getGepOffset(gep.base_ptr_type, indices)
-      assert len(unknown_offsets) == 0
+          known_offset, unknown_offsets = getGepOffset(expr.base_ptr_type, indices)
+          assert len(unknown_offsets) == 0
 
-      base_ptr = ctx.globvar_to_ptr[gep.base_ptr.name]
+          base_ptr = ctx.globvar_to_ptr[expr.base_ptr.name]
 
-      return ValueAndBlocks(sb3.Known(base_ptr + known_offset))
+          return ValueAndBlocks(sb3.Known(base_ptr + known_offset))
+
+        case _:
+          raise CompException(f"Unsupported constant expression type: {expr}")
 
     case _:
       raise CompException(f"Unknown Value {val}")
@@ -342,7 +347,7 @@ def transVar(var: ir.Value | ir.ResultLocalVar | str, bctx: BlockInfo | None) ->
       return localizeVar(var, False, bctx)
     case ir.LocalVarVal() | ir.ArgumentVal() | ir.ResultLocalVar():
       return localizeVar(var.name, False, bctx)
-    case ir.GlobalVarVal():
+    case ir.GlobalOrFuncPtrVal():
       return localizeVar(var.name, True, bctx)
     case _:
       raise CompException(f"Invalid type for var {var}: {type(var)}")
@@ -1848,7 +1853,7 @@ def getInstrVarUse(instr: ir.Instr,
         case ir.ArgumentVal() | ir.LocalVarVal():
           depends.add(val.name)
           depends_var_sizes[val.name] = getByteSize(val.type)
-        case ir.GlobalVarVal() | ir.KnownVal():
+        case ir.GlobalOrFuncPtrVal() | ir.KnownVal():
           pass
         case _:
           raise CompException(f"Unknown Value: {val}")

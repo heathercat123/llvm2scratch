@@ -97,40 +97,56 @@ class Intrinsic(Enum):
 class ResultLocalVar:
   name: str
 
+@dataclass
 class Type:
   pass
 
+@dataclass
 class AggTargetTy(Type):
   pass
 
+@dataclass
 class VecTargetTy(Type):
   pass
 
+@dataclass
 class VoidTy(Type):
   pass
+
+@dataclass
+class FuncTy(Type):
+  return_type: Type
+  args: list[Type]
 
 @dataclass
 class IntegerTy(VecTargetTy, AggTargetTy):
   width: int
 
+@dataclass
 class FloatingPointTy(VecTargetTy, AggTargetTy):
   pass
 
+@dataclass
 class HalfTy(FloatingPointTy):
   pass
 
+@dataclass
 class FloatTy(FloatingPointTy):
   pass
 
+@dataclass
 class DoubleTy(FloatingPointTy):
   pass
 
+@dataclass
 class Fp128Ty(FloatingPointTy):
   pass
 
+@dataclass
 class PointerTy(VecTargetTy, AggTargetTy):
-  pass
+  addrspace: str | int
 
+@dataclass
 class MetadataTy(Type):
   pass
 
@@ -139,6 +155,7 @@ class VecTy(AggTargetTy):
   inner: VecTargetTy
   size: int
 
+@dataclass
 class LabelTy(Type):
   pass
 
@@ -156,12 +173,15 @@ class StructTy(AggTargetTy):
 class Value:
   type: Type
 
+@dataclass
 class KnownVal(Value):
   pass
 
+@dataclass
 class KnownAggTargetVal(Value):
   pass
 
+@dataclass
 class KnownVecTargetVal(Value):
   pass
 
@@ -180,7 +200,7 @@ class LocalVarVal(Value):
   name: str
 
 @dataclass
-class GlobalVarVal(KnownVal, KnownAggTargetVal):
+class GlobalOrFuncPtrVal(KnownVal, KnownAggTargetVal):
   name: str
 
 @dataclass
@@ -218,11 +238,13 @@ class LabelVal(KnownVal):
 
 @dataclass
 class ConstExprVal(KnownVal, KnownAggTargetVal):
-  expr: GetElementPtr
+  expr: Conversion | GetElementPtr | ExtractElement | InsertElement | ShuffleVector | BinaryOp
 
+@dataclass
 class MetadataVal(KnownVal):
   pass
 
+@dataclass
 class Instr:
   pass
 
@@ -238,6 +260,7 @@ class MaybeHasResult:
 class Ret(Instr):
   value: Value | None
 
+@dataclass
 class Br(Instr):
   pass
 
@@ -257,6 +280,7 @@ class Switch(Instr):
   branch_default: LabelVal
   branch_table: list[tuple[KnownIntVal, LabelVal]]
 
+@dataclass
 class Unreachable(Instr):
   pass
 
@@ -277,12 +301,12 @@ class BinaryOp(Instr, HasResult):
 
 @dataclass
 class ExtractElement(Instr, HasResult):
-  vector: Value
+  agg: Value
   index: Value
 
 @dataclass
 class InsertElement(Instr):
-  vector: Value
+  agg: Value
   item: Value
   index: Value
 
@@ -383,7 +407,7 @@ class GlobalVar():
   name: str
   type: Type
   is_constant: bool
-  init: KnownVal | GlobalVarVal | ConstExprVal | None
+  init: KnownVal
 
 @dataclass
 class Module():

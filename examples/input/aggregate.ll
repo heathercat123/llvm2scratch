@@ -1,7 +1,6 @@
 %MyStruct = type { i32, float }
 %Inner    = type { i32, i32 }
 %Outer    = type { %Inner, float }
-%Arr3     = type [3 x i32]
 %Mixed    = type { i32, [2 x float] }
 
 define void @main() {
@@ -38,13 +37,15 @@ entry:
   ; Array [3 x i32]
   ; ============================================================
 
-  %a0 = insertvalue %Arr3 undef, i32 100, 0
-  %a1 = insertvalue %Arr3 %a0, i32 200, 1
-  %a2 = insertvalue %Arr3 %a1, i32 300, 2
+  %a0 = insertvalue [3 x i32] undef, i32 100, 0
+  %a1 = insertvalue [3 x i32] %a0, i32 200, 1
+  %a2 = insertvalue [3 x i32] %a1, i32 300, 2
 
-  %a_e0 = extractvalue %Arr3 %a2, 0
-  %a_e1 = extractvalue %Arr3 %a2, 1
-  %a_e2 = extractvalue %Arr3 %a2, 2
+  %a_e0 = extractvalue [3 x i32] %a2, 0
+  %a_e1 = extractvalue [3 x i32] %a2, 1
+  %a_e2 = extractvalue [3 x i32] %a2, 2
+
+  %hi = shufflevector <2 x i32> <i32 1, i32 2>, <2 x i32> <i32 3, i32 4>, <2 x i32> <i32 0, i32 2>
 
   ; ============================================================
   ; Mixed struct { i32, [2 x float] }
@@ -60,6 +61,12 @@ entry:
   %m_arr = extractvalue %Mixed %m1, 1
   %m_f0 = extractvalue [2 x float] %m_arr, 0
   %m_f1 = extractvalue [2 x float] %m_arr, 1
+
+  %hmm = load ptr addrspace(92), ptr addrspace(92) inttoptr( i32 0 to ptr addrspace(92) )
+  %vec = add <4 x i32> <i32 1, i32 2, i32 3, i32 4>, <i32 1, i32 2, i32 3, i32 4>
+
+  %val = call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 0, i32 1)
+  %result = extractvalue { i32, i1 } %val, 0
 
   ret void
 }

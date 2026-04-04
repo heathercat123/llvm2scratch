@@ -13,11 +13,10 @@ def main():
   if not os.path.exists("./output"):
     os.mkdir("output")
 
-  # --target=i386-none-elf will remove standard lib, preferable when adding own
-  subprocess.run([cc, "-S", "-m32", "-Os", "-fno-vectorize", "-fno-slp-vectorize", "-emit-llvm", "-I", "sb3api.h", "demo.c", "-o", "main.ll"],
+  subprocess.run([cc, "-S", "-m32", "-Os", "-fno-vectorize", "-fno-slp-vectorize", "-emit-llvm", "-I", "sb3api.h", "demo.c", "-o", "demo.ll"],
                  cwd=os.path.join(script_dir, "input"))
 
-  with open("input/main.ll", "r") as file:
+  with open("input/demo.ll", "r") as file:
     proj, _ = llvm2scratch.compile(file.read(), llvm2scratch.Config(opti=True))
     proj.export("output/out.sprite3")
 

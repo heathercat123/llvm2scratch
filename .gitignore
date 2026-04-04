@@ -8,8 +8,10 @@ examples/output
 examples/profile.out
 examples/input/main
 examples/input/main.ll
+examples/input/demo.ll
 examples/input/overflow.ll
 examples/input/local_stack_64.ll
+examples/input/large.ll
 examples/debug_branch_info.txt
 
 flamegraph.sh
@@ -18,8 +20,3 @@ flamegraph.svg
 poetry.lock
 pyrightconfig.json
 pyrefly.toml
-
-# Temp
-ir.py
-parser.py
-parser_test.py

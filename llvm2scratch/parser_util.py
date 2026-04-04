@@ -42,20 +42,6 @@ PRE_RET_FUNC_ATTRS = [
   "dead_on_return", "range",
 ]
 
-# Build regex that matches any of them, optionally with (<...>) or <n> arguments
-ATTR_RE = re.compile(
-  r"^(?:" + "|".join(map(re.escape, PRE_RET_FUNC_ATTRS)) + r")(\s*\([^)]*\))?\s+"
-)
-
-def stripReturnAttrs(rest: str) -> str:
-  s = rest.strip()
-  while True:
-    m = ATTR_RE.match(s)
-    if not m:
-      break
-    s = s[m.end():].lstrip()
-  return s
-
 # Returns (decoded, rest, parsed_len), where parsed_len is the length
 # of syntax decoded (including quotes)
 def parseQuoted(rest: str) -> tuple[str, str, int]:

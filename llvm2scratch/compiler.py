@@ -1031,7 +1031,7 @@ def transInstr(instr: ir.Instr, ctx: Context, bctx: BlockInfo) -> tuple[sb3.Bloc
         case ir.BinaryOpcode.Add | ir.BinaryOpcode.Sub: # Add/Sub two values
           str_opcode = "add" if instr.opcode == ir.BinaryOpcode.Add else "sub"
 
-          if not isinstance(instr.left.type, ir.IntegerTy): # TODO: add vector support
+          if not isinstance(instr.left.type, ir.IntegerTy):
             raise CompException(f"Instruction {instr} with opcode add/sub only supports "
                                 f"integers, got type {type(instr.left.type)}")
 
@@ -1058,7 +1058,7 @@ def transInstr(instr: ir.Instr, ctx: Context, bctx: BlockInfo) -> tuple[sb3.Bloc
 
         case ir.BinaryOpcode.Mul: # Multiply two values
           assert not (isinstance(left, IdxbleValue) or isinstance(right, IdxbleValue))
-          if not isinstance(instr.left.type, ir.IntegerTy): # TODO: add vector support
+          if not isinstance(instr.left.type, ir.IntegerTy):
             raise CompException(f"Instruction {instr} with opcode add only supports "
                                 f"integers, got type {type(instr.left.type)}")
           width = instr.left.type.width
@@ -1073,7 +1073,7 @@ def transInstr(instr: ir.Instr, ctx: Context, bctx: BlockInfo) -> tuple[sb3.Bloc
         case ir.BinaryOpcode.UDiv: # Divide one value by another (unsigned)
           assert not (isinstance(left, IdxbleValue) or isinstance(right, IdxbleValue))
           # TODO OPTI: optimise for known values
-          if not isinstance(instr.left.type, ir.IntegerTy): # TODO: add vector support
+          if not isinstance(instr.left.type, ir.IntegerTy):
             raise CompException(f"Instruction {instr} with opcode add only supports "
                                 f"integers, got type {type(instr.left.type)}")
 
@@ -1091,7 +1091,7 @@ def transInstr(instr: ir.Instr, ctx: Context, bctx: BlockInfo) -> tuple[sb3.Bloc
 
         case ir.BinaryOpcode.SDiv: # Divide one value by another (signed)
           assert not (isinstance(left, IdxbleValue) or isinstance(right, IdxbleValue))
-          if not isinstance(instr.left.type, ir.IntegerTy): # TODO: add vector support
+          if not isinstance(instr.left.type, ir.IntegerTy):
             raise CompException(f"Instruction {instr} with opcode add only supports "
                                 f"integers, got type {type(instr.left.type)}")
           width = instr.left.type.width
@@ -1153,7 +1153,7 @@ def transInstr(instr: ir.Instr, ctx: Context, bctx: BlockInfo) -> tuple[sb3.Bloc
 
         case ir.BinaryOpcode.URem: # Calculate remainder (unsigned)
           assert not (isinstance(left, IdxbleValue) or isinstance(right, IdxbleValue))
-          if not isinstance(instr.left.type, ir.IntegerTy): # TODO: add vector support
+          if not isinstance(instr.left.type, ir.IntegerTy):
             raise CompException(f"Instruction {instr} with opcode add only supports "
                                 f"integers, got type {type(instr.left.type)}")
 
@@ -1169,7 +1169,7 @@ def transInstr(instr: ir.Instr, ctx: Context, bctx: BlockInfo) -> tuple[sb3.Bloc
         case ir.BinaryOpcode.SRem: # Calculate remainder (signed)
           assert not (isinstance(left, IdxbleValue) or isinstance(right, IdxbleValue))
           # TODO OPTI: optimise for known values
-          if not isinstance(instr.left.type, ir.IntegerTy): # TODO: add vector support
+          if not isinstance(instr.left.type, ir.IntegerTy):
             raise CompException(f"Instruction {instr} with opcode add only supports "
                                 f"integers, got type {type(instr.left.type)}")
 
@@ -1249,7 +1249,7 @@ def transInstr(instr: ir.Instr, ctx: Context, bctx: BlockInfo) -> tuple[sb3.Bloc
 
         case ir.BinaryOpcode.Shl: # Calculate left shift
           assert not (isinstance(left, IdxbleValue) or isinstance(right, IdxbleValue))
-          if not isinstance(instr.left.type, ir.IntegerTy): # TODO: add vector support
+          if not isinstance(instr.left.type, ir.IntegerTy):
             raise CompException(f"Instruction {instr} with opcode add only supports "
                                 f"integers, got type {type(instr.left.type)}")
 
@@ -1264,7 +1264,7 @@ def transInstr(instr: ir.Instr, ctx: Context, bctx: BlockInfo) -> tuple[sb3.Bloc
 
         case ir.BinaryOpcode.LShr: # Calculate right shift (unsigned)
           assert not (isinstance(left, IdxbleValue) or isinstance(right, IdxbleValue))
-          if not isinstance(instr.left.type, ir.IntegerTy): # TODO: add vector support
+          if not isinstance(instr.left.type, ir.IntegerTy):
             raise CompException(f"Instruction {instr} with opcode add only supports "
                                 f"integers, got type {type(instr.left.type)}")
 
@@ -1279,7 +1279,7 @@ def transInstr(instr: ir.Instr, ctx: Context, bctx: BlockInfo) -> tuple[sb3.Bloc
 
         case ir.BinaryOpcode.AShr: # Calculate right shift (signed)
           assert not (isinstance(left, IdxbleValue) or isinstance(right, IdxbleValue))
-          if not isinstance(instr.left.type, ir.IntegerTy): # TODO: add vector support
+          if not isinstance(instr.left.type, ir.IntegerTy):
             raise CompException(f"Instruction {instr} with opcode add only supports "
                                 f"integers, got type {type(instr.left.type)}")
 
@@ -1314,7 +1314,7 @@ def transInstr(instr: ir.Instr, ctx: Context, bctx: BlockInfo) -> tuple[sb3.Bloc
 
         case ir.BinaryOpcode.And | ir.BinaryOpcode.Or | ir.BinaryOpcode.Xor: # Calculate binary operation
           assert not (isinstance(left, IdxbleValue) or isinstance(right, IdxbleValue))
-          if not isinstance(instr.left.type, ir.IntegerTy): # TODO: add vector support
+          if not isinstance(instr.left.type, ir.IntegerTy):
             raise CompException(f"Instruction {instr} with opcode add only supports "
                                 f"integers, got type {type(instr.left.type)}")
 
@@ -1434,7 +1434,7 @@ def transInstr(instr: ir.Instr, ctx: Context, bctx: BlockInfo) -> tuple[sb3.Bloc
       match instr.opcode:
         case ir.ConvOpcode.Trunc | ir.ConvOpcode.ZExt | ir.ConvOpcode.SExt | \
              ir.ConvOpcode.UIToFP | ir.ConvOpcode.SIToFP | ir.ConvOpcode.IntToPtr:
-          if not isinstance(instr.value.type, ir.IntegerTy): # TODO: add vector support
+          if not isinstance(instr.value.type, ir.IntegerTy):
             raise CompException(f"Instruction {instr} with opcode add only supports "
               f"integers, got type {type(instr.value.type)}")
 
@@ -1444,12 +1444,12 @@ def transInstr(instr: ir.Instr, ctx: Context, bctx: BlockInfo) -> tuple[sb3.Bloc
                                 f"integers with <= {VARIABLE_MAX_BITS} bits")
 
         case ir.ConvOpcode.FPTrunc | ir.ConvOpcode.FPExt:
-          if not isinstance(instr.value.type, ir.FloatingPointTy): # TODO: add vector support
+          if not isinstance(instr.value.type, ir.FloatingPointTy):
             raise CompException(f"Instruction {instr} only supports "
                                 f"floats, got type {type(instr.value.type)}")
 
         case ir.ConvOpcode.FPToUI | ir.ConvOpcode.FPToSI:
-          if not isinstance(instr.value.type, ir.FloatingPointTy): # TODO: add vector support
+          if not isinstance(instr.value.type, ir.FloatingPointTy):
             raise CompException(f"Instruction {instr} only supports "
                                 f"floats, got type {type(instr.value.type)}")
 
@@ -1538,7 +1538,7 @@ def transInstr(instr: ir.Instr, ctx: Context, bctx: BlockInfo) -> tuple[sb3.Bloc
       res_var = transVar(instr.result, bctx)
       assert res_var.var_type != "param"
 
-      if not isinstance(instr.left.type, ir.IntegerTy): # TODO: add vector support
+      if not isinstance(instr.left.type, ir.IntegerTy):
         raise CompException(f"Instruction {instr} with opcode add only supports "
                             f"integers, got type {type(instr.left.type)}")
       assert isinstance(left, sb3.Value) and isinstance(right, sb3.Value)
@@ -1677,27 +1677,27 @@ def transInstr(instr: ir.Instr, ctx: Context, bctx: BlockInfo) -> tuple[sb3.Bloc
       true_val = transValue(instr.true_value, ctx, bctx)
       false_val = transValue(instr.false_value, ctx, bctx)
 
-      if not all(isinstance(val.type, ir.IntegerTy) for val in \
-          (instr.cond, instr.true_value, instr.false_value)): # TODO: add vector support
-        raise CompException(f"Instruction {instr} with opcode select only supports "
-                            f"integers, got other type")
       assert isinstance(instr.cond.type, ir.IntegerTy)
       assert instr.cond.type.width == 1
       assert isinstance(cond.value, sb3.Value)
-      assert isinstance(true_val.value, sb3.Value)
-      assert isinstance(false_val.value, sb3.Value)
 
       res_var = transVar(instr.result, bctx)
       assert res_var.var_type != "param"
 
+      true_blocks = true_val.blocks
+      false_blocks = false_val.blocks
+      if isinstance(true_val, ValueAndBlocks):
+        assert isinstance(false_val, ValueAndBlocks)
+        true_blocks.add(res_var.setValue(true_val.value))
+        false_blocks.add(res_var.setValue(false_val.value))
+      else:
+        assert isinstance(true_val, IdxbleValueAndBlocks)
+        assert isinstance(false_val, IdxbleValueAndBlocks)
+        true_blocks.add(res_var.setAllValues(true_val.value))
+        false_blocks.add(res_var.setAllValues(false_val.value))
+
       blocks.add(cond.blocks)
-      blocks.add(sb3.ControlFlow("if_else", sb3.BoolOp("=", cond.value, sb3.Known(1)), sb3.BlockList([
-        *true_val.blocks.blocks,
-        res_var.setValue(true_val.value)
-      ]), sb3.BlockList([
-        *false_val.blocks.blocks,
-        res_var.setValue(false_val.value)
-      ])))
+      blocks.add(sb3.ControlFlow("if_else", sb3.BoolOp("=", cond.value, sb3.Known(1)), true_blocks, false_blocks))
 
     case ir.Phi(): # Choose a value based on which block control came from
       pass # Phi assignments are dealt with in the brancher function
